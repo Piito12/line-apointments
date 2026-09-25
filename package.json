@@ -15,17 +15,21 @@
     "typecheck": "tsc"
   },
   "dependencies": {
+    "@chat-adapter/state-memory": "^4.41.0",
     "@vercel/connect": "2.2.0",
     "ai": "^7.0.105",
+    "chat": "^4.41.0",
+    "chat-adapter-line": "^0.1.5",
     "eve": "^0.66.3",
     "zod": "4.5.4"
   },
   "devDependencies": {
     "@types/node": "24.x",
+    "just-bash": "^3.4.2",
+    "microsandbox": "^0.5.5",
     "typescript": "7.0.2"
   },
   "engines": {
     "node": "24.x"
   }
-
 }

@@ -35,6 +35,20 @@ LINE_CHANNEL_ACCESS_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 > ⚠️ **ต้องมีทั้งสองค่าเสมอ** แม้จะทดสอบแค่ใน terminal โดยไม่ใช้ LINE เพราะ `agent/channels/line.ts` สร้าง LINE adapter ตอนโหลด ถ้าไม่มีค่า dev server จะเปิดไม่ขึ้น (eve compile channel แบบ static จึงปิด channel ตามเงื่อนไขไม่ได้)
 
+### Google Calendar (สำหรับ tool ดูเวลาว่างและจองคิว)
+
+```bash
+GOOGLE_SERVICE_ACCOUNT_KEY={"type":"service_account","client_email":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...","...":"..."}
+GOOGLE_CALENDAR_ID=xxxxxxxx@group.calendar.google.com
+```
+
+1. Google Cloud Console → สร้าง project → **APIs & Services → Library** → เปิด **Google Calendar API**
+2. **Credentials → Create credentials → Service account** → แท็บ **Keys → Add key → JSON** → ดาวน์โหลด แล้วเอาเนื้อหา JSON ทั้งก้อนมาใส่ใน `GOOGLE_SERVICE_ACCOUNT_KEY` เป็นบรรทัดเดียว (ห้ามวางไฟล์ key ไว้ในโปรเจกต์)
+3. Google Calendar → สร้าง **calendar ใหม่สำหรับทดสอบ** → Settings ของ calendar นั้น → **Share with specific people** → ใส่ `client_email` ของ service account ให้สิทธิ์ **Make changes to events**
+4. คัดลอก **Calendar ID** จากหัวข้อ Integrate calendar มาใส่ `GOOGLE_CALENDAR_ID`
+
+ถ้ายังไม่ได้ตั้งค่า agent ยังรันได้ แต่จะตอบลูกค้าว่ายังตรวจสอบตารางไม่ได้ (ไม่แต่งเวลาว่างเอง)
+
 ช่วงทดสอบไม่ต้องใส่ API key ของโมเดลใน `.env.local` เพราะใช้ ChatGPT subscription ผ่าน `/login` (ดูหัวข้อถัดไป)
 
 ## รันใน local
@@ -109,11 +123,20 @@ https://xxxx-xxxx-xxxx.trycloudflare.com/eve/v1/line
 
 ```
 agent/
-├── agent.ts            # เลือกโมเดล (ตอนนี้ chatgpt())
-├── instructions.md     # persona และกฎของผู้ช่วยนัดหมาย (ข้อมูลคลินิกเป็นข้อมูลสมมติ)
-└── channels/
-    ├── eve.ts          # HTTP session API + TUI ของ eve
-    └── line.ts         # LINE channel ผ่าน Chat SDK → webhook /eve/v1/line
+├── agent.ts                      # เลือกโมเดล (ตอนนี้ chatgpt())
+├── instructions.md               # persona และกฎของผู้ช่วยนัดหมาย
+├── instructions/
+│   └── current-time.ts           # บอกวันเวลาปัจจุบัน (เวลาไทย) ทุก turn
+├── channels/
+│   ├── eve.ts                    # HTTP session API + TUI ของ eve
+│   └── line.ts                   # LINE channel ผ่าน Chat SDK → webhook /eve/v1/line
+├── tools/
+│   ├── get_available_slots.ts    # ดูเวลาว่างจาก Google Calendar
+│   └── book_appointment.ts       # จองคิวลง Google Calendar
+└── lib/
+    ├── clinic.ts                 # ข้อมูลคลินิก: เวลาทำการ บริการ ระยะเวลา (ข้อมูลสมมติ)
+    ├── slots.ts                  # คำนวณเวลาว่าง (ไม่เรียก network)
+    └── calendar.ts               # Google Calendar client (Service Account)
 ```
 
 ## ข้อจำกัดของ PoC
@@ -122,7 +145,8 @@ agent/
 - **ChatGPT subscription ใช้ได้เฉพาะ local** ก่อน deploy ต้องเปลี่ยนโมเดลใน `agent/agent.ts` เป็นแบบ API key และตั้ง key ใน environment ของ server
 - **State ของ Chat SDK อยู่ใน memory** หายเมื่อ restart production ต้องเปลี่ยนเป็น durable state (Redis/Upstash)
 - `chat-adapter-line` เป็น package ของชุมชน (v0.1.x)
-- ยังไม่มี tool Google Calendar และ Flex message (งานถัดไป)
+- ยังไม่มี Flex message (งานถัดไป) ตอนนี้ agent ตอบเวลาว่างเป็นข้อความธรรมดา
+- รับลูกค้าได้ทีละ 1 คิว event ใดๆ ใน calendar (ที่ไม่ได้ตั้งเป็น Free) ถือว่าเวลานั้นไม่ว่าง
 
 ## Learn more
 

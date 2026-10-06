@@ -49,7 +49,7 @@ export default defineTool({
     }
 
     const now = Date.now();
-    const base = { service: SERVICES[service].label, durationMinutes: SERVICES[service].minutes, bookingWindow: bookingWindow(now) };
+    const base = { serviceId: service, service: SERVICES[service].label, durationMinutes: SERVICES[service].minutes, bookingWindow: bookingWindow(now) };
 
     // รอบแรกไม่มีข้อมูล calendar: ใช้หาช่วงวันที่ที่จองได้จริง เพื่อดึง event เท่าที่จำเป็น
     const window = computeAvailableSlots({ serviceId: service, startDate, endDate: end, busy: [], now, timeFrom, timeTo });

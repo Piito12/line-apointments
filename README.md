@@ -4,7 +4,7 @@ AI agent ผู้ช่วยนัดหมายของ "คลินิก
 
 - **Framework:** eve (Vercel) · TypeScript · Node 24
 - **LINE:** Vercel Chat SDK + [`chat-adapter-line`](https://github.com/PunGrumpy/chat-adapter-line)
-- **โมเดล:** `openai/gpt-5.6-luna` ผ่าน [Vercel AI Gateway](https://vercel.com/docs/ai-gateway)
+- **โมเดล:** เลือกอัตโนมัติตาม API key ที่มี (Anthropic / OpenAI / [Vercel AI Gateway](https://vercel.com/docs/ai-gateway)) ถ้าไม่มี key ใช้ ChatGPT subscription สำหรับ local (ดู [การเลือกโมเดล](#การเลือกโมเดล))
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FPiito12%2Fline-apointments&project-name=clinic-appointment&repository-name=clinic-appointment&env=LINE_CHANNEL_SECRET,LINE_CHANNEL_ACCESS_TOKEN,GOOGLE_SERVICE_ACCOUNT_KEY,GOOGLE_CALENDAR_ID&envDescription=LINE%20Messaging%20API%20credentials%20and%20Google%20Calendar%20service%20account&envLink=https%3A%2F%2Fgithub.com%2FPiito12%2Fline-apointments%23environment-variables-secret)
 
@@ -13,7 +13,8 @@ AI agent ผู้ช่วยนัดหมายของ "คลินิก
 ## สิ่งที่ต้องมี
 
 - Node.js **24.x** (ตรวจด้วย `node -v`) ถ้าติดตั้งผ่าน Homebrew: `brew install node@24` แล้วเพิ่ม `export PATH="/opt/homebrew/opt/node@24/bin:$PATH"` ใน `~/.zshrc`
-- บัญชี Vercel (สำหรับ AI Gateway และ deploy)
+- บัญชี ChatGPT (สำหรับเทส local แบบไม่ใช้ API key)
+- บัญชี Vercel (สำหรับ deploy)
 - LINE Official Account ที่เปิดใช้ Messaging API แล้ว
 - `cloudflared` สำหรับเปิดท่อให้ LINE ส่ง webhook เข้าเครื่อง: `brew install cloudflared`
 
@@ -33,7 +34,10 @@ npm install
 | `LINE_CHANNEL_ACCESS_TOKEN` | ✅ | ส่งข้อความตอบกลับลูกค้า |
 | `GOOGLE_SERVICE_ACCOUNT_KEY` | แนะนำ | JSON key ของ service account เป็นบรรทัดเดียว ใช้อ่านและจองคิวใน Google Calendar |
 | `GOOGLE_CALENDAR_ID` | แนะนำ | calendar ที่ใช้เก็บนัด |
-| `AI_GATEWAY_API_KEY` | เฉพาะ local | key ของ AI Gateway บน Vercel ไม่ต้องใส่ เพราะ deployment ใช้ OIDC เอง |
+| `ANTHROPIC_API_KEY` | ไม่บังคับ | ถ้ามี จะเรียก Claude โดยตรง |
+| `OPENAI_API_KEY` | ไม่บังคับ | ถ้ามี จะเรียก OpenAI โดยตรง |
+| `AI_GATEWAY_API_KEY` | ไม่บังคับ | ถ้ามี จะเรียกผ่าน AI Gateway (บน Vercel ไม่ต้องใส่ เพราะใช้ OIDC เอง) |
+| `AI_MODEL` | ไม่บังคับ | เปลี่ยนรุ่นโมเดลภายใน provider ที่ถูกเลือก |
 
 > ถ้าไม่ใส่ค่า Google agent ยังรันได้ แต่จะตอบลูกค้าว่ายังตรวจสอบตารางไม่ได้ ส่วนค่า LINE ต้องมีเสมอ ไม่งั้นแอปเปิดไม่ขึ้น (รายละเอียดด้านล่าง)
 
@@ -67,14 +71,21 @@ GOOGLE_CALENDAR_ID=xxxxxxxx@group.calendar.google.com
 
 ถ้ายังไม่ได้ตั้งค่า agent ยังรันได้ แต่จะตอบลูกค้าว่ายังตรวจสอบตารางไม่ได้ (ไม่แต่งเวลาว่างเอง)
 
-### AI Gateway (โมเดล)
+### การเลือกโมเดล
 
-เลือกได้ 1 วิธีสำหรับรัน local:
+`agent/agent.ts` เลือกโมเดลจาก API key ที่มีใน environment ตามลำดับนี้ ตัวแรกที่เจอจะถูกใช้:
 
-- **ใช้ API key:** Vercel Dashboard → **AI Gateway → API Keys** → สร้าง key แล้วใส่ `AI_GATEWAY_API_KEY=...` ใน `.env.local`
-- **ใช้ OIDC ของ project:** รัน `npx eve link` เพื่อผูกกับ Vercel project และดึง env มา (token มีอายุจำกัด หมดอายุแล้วให้รันใหม่)
+| ลำดับ | เงื่อนไข | Provider | รุ่นเริ่มต้น | ตัวอย่าง `AI_MODEL` |
+|---|---|---|---|---|
+| 1 | มี `ANTHROPIC_API_KEY` | Anthropic โดยตรง | `claude-sonnet-5` | `claude-haiku-5.5` |
+| 2 | มี `OPENAI_API_KEY` | OpenAI โดยตรง | `gpt-5.6-luna` | `gpt-5.6-sol` |
+| 3 | มี `AI_GATEWAY_API_KEY` / `VERCEL_OIDC_TOKEN` หรือรันบน Vercel | AI Gateway | `openai/gpt-5.6-luna` | `anthropic/claude-sonnet-5` (ต้องมี prefix `provider/`) |
+| 4 | ไม่มี key เลย | ChatGPT subscription | `gpt-5.6-luna` | `gpt-5.6-luna-fast` |
 
-ถ้าจะเปลี่ยนโมเดล ให้แก้ string ใน `agent/agent.ts` หรือรัน `npx eve set --model <provider/model>`
+- **เทส local (ค่าปัจจุบัน):** ไม่ต้องใส่ key ของโมเดลใน `.env.local` ระบบจะใช้ ChatGPT subscription ตามข้อ 4 (ดูวิธี `/login` ในหัวข้อถัดไป)
+- **Production บน Vercel:** ถ้าไม่ใส่ key ของ Anthropic/OpenAI จะใช้ AI Gateway ผ่าน OIDC ให้เอง ChatGPT subscription ใช้บน server ไม่ได้
+- ถ้ารัน `npx eve link` แล้ว env ที่ดึงมาอาจมี `VERCEL_OIDC_TOKEN` ทำให้ local เปลี่ยนไปใช้ Gateway แทน ChatGPT
+- ต้อง restart `npm run dev` หลังแก้ env
 
 ## รันใน local
 
@@ -82,7 +93,7 @@ GOOGLE_CALENDAR_ID=xxxxxxxx@group.calendar.google.com
 npm run dev
 ```
 
-พิมพ์คุยกับ agent ใน terminal ได้เลย (ต้องตั้งค่า AI Gateway ตามหัวข้อด้านบนก่อน) eve จะ reload เองเมื่อแก้ไฟล์ใน `agent/`
+ถ้าใช้ ChatGPT subscription (ไม่มี key ของโมเดล) ครั้งแรกให้พิมพ์ `/login` ใน TUI → เลือก **ChatGPT Subscription** → login ในเบราว์เซอร์ จากนั้นพิมพ์คุยกับ agent ใน terminal ได้เลย eve จะ reload เองเมื่อแก้ไฟล์ใน `agent/`
 
 dev server รันที่ `http://127.0.0.1:2000`
 
@@ -140,7 +151,8 @@ https://xxxx-xxxx-xxxx.trycloudflare.com/eve/v1/line
 | อาการ | สาเหตุที่เป็นไปได้ |
 |---|---|
 | dev server เปิดไม่ขึ้น | ไม่มี `LINE_CHANNEL_SECRET` / `LINE_CHANNEL_ACCESS_TOKEN` ใน `.env.local` หรือ Node ไม่ใช่ 24.x |
-| agent ไม่ตอบ / error เรื่อง gateway | ยังไม่ได้ตั้ง `AI_GATEWAY_API_KEY` หรือ OIDC token หมดอายุ (รัน `npx eve link` ใหม่) |
+| agent ไม่ตอบ / error เรื่องโมเดล | local ยังไม่ได้ `/login` ChatGPT, API key ผิด, หรือ OIDC token หมดอายุ (รัน `npx eve link` ใหม่) |
+| บน Vercel error เรื่อง ChatGPT | ไม่ควรเกิด เพราะบน Vercel จะใช้ Gateway เสมอ ถ้าเกิดให้เช็กว่ามี env `VERCEL` |
 | Verify ไม่ผ่าน | ลืมต่อ `/eve/v1/line`, ท่อหรือ dev server ไม่ได้รันอยู่, หรือ URL เป็นของท่อรอบก่อน |
 | ทักแล้ว agent ไม่ตอบ | Use webhook ยังเป็น Off หรือ access token ผิด (ดู log ใน terminal ของ `npm run dev`) |
 | LINE ตอบข้อความอัตโนมัติซ้อน | ยังไม่ได้ปิด Auto-response messages |
@@ -172,7 +184,7 @@ npx eve deploy --non-interactive --yes
 
 ```
 agent/
-├── agent.ts                      # เลือกโมเดล (AI Gateway)
+├── agent.ts                      # เลือกโมเดลตาม API key ที่มี
 ├── instructions.md               # persona และกฎของผู้ช่วยนัดหมาย
 ├── instructions/
 │   └── current-time.ts           # บอกวันเวลาปัจจุบัน (เวลาไทย) ทุก turn
@@ -190,8 +202,8 @@ agent/
 
 ## ข้อจำกัดของ PoC
 
-- **ใช้ข้อมูลสมมติเท่านั้น** ห้ามใส่ชื่อ เบอร์โทร หรือข้อมูลลูกค้าจริง เพราะข้อความวิ่งผ่าน OpenAI (PDPA)
-- **ค่าใช้จ่ายโมเดล** คิดตามการใช้งานผ่าน AI Gateway ของบัญชี Vercel
+- **ใช้ข้อมูลสมมติเท่านั้น** ห้ามใส่ชื่อ เบอร์โทร หรือข้อมูลลูกค้าจริง เพราะข้อความวิ่งผ่าน provider ของโมเดล (OpenAI, Anthropic หรือ AI Gateway) (PDPA)
+- **ค่าใช้จ่ายโมเดล** คิดตาม provider ที่ถูกเลือก (Anthropic, OpenAI หรือ AI Gateway ของบัญชี Vercel)
 - **State ของ Chat SDK อยู่ใน memory** หายเมื่อ restart production ต้องเปลี่ยนเป็น durable state (Redis/Upstash)
 - `chat-adapter-line` เป็น package ของชุมชน (v0.1.x)
 - ยังไม่มี Flex message (งานถัดไป) ตอนนี้ agent ตอบเวลาว่างเป็นข้อความธรรมดา

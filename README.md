@@ -4,12 +4,16 @@ AI agent ผู้ช่วยนัดหมายของ "คลินิก
 
 - **Framework:** eve (Vercel) · TypeScript · Node 24
 - **LINE:** Vercel Chat SDK + [`chat-adapter-line`](https://github.com/PunGrumpy/chat-adapter-line)
-- **โมเดล (ช่วงทดสอบ):** ChatGPT subscription ผ่าน `chatgpt()` ใช้ได้เฉพาะ local
+- **โมเดล:** `openai/gpt-5.6-luna` ผ่าน [Vercel AI Gateway](https://vercel.com/docs/ai-gateway)
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FPiito12%2Fline-apointments&project-name=clinic-appointment&repository-name=clinic-appointment&env=LINE_CHANNEL_SECRET,LINE_CHANNEL_ACCESS_TOKEN,GOOGLE_SERVICE_ACCOUNT_KEY,GOOGLE_CALENDAR_ID&envDescription=LINE%20Messaging%20API%20credentials%20and%20Google%20Calendar%20service%20account&envLink=https%3A%2F%2Fgithub.com%2FPiito12%2Fline-apointments%23environment-variables-secret)
+
+> ปุ่มนี้ชี้ไปที่ repo private ใช้ได้เฉพาะบัญชีที่มีสิทธิ์เข้าถึง repo และต้องให้ Vercel GitHub App เข้าถึง repo นี้ก่อน วิธีตั้งค่า secret ดูที่หัวข้อ [Environment variables (secret)](#environment-variables-secret) และขั้นตอนหลัง deploy ดูที่ [Deploy ขึ้น Vercel](#deploy-ขึ้น-vercel)
 
 ## สิ่งที่ต้องมี
 
 - Node.js **24.x** (ตรวจด้วย `node -v`) ถ้าติดตั้งผ่าน Homebrew: `brew install node@24` แล้วเพิ่ม `export PATH="/opt/homebrew/opt/node@24/bin:$PATH"` ใน `~/.zshrc`
-- บัญชี ChatGPT (สำหรับโมเดลช่วงทดสอบ)
+- บัญชี Vercel (สำหรับ AI Gateway และ deploy)
 - LINE Official Account ที่เปิดใช้ Messaging API แล้ว
 - `cloudflared` สำหรับเปิดท่อให้ LINE ส่ง webhook เข้าเครื่อง: `brew install cloudflared`
 
@@ -19,9 +23,23 @@ AI agent ผู้ช่วยนัดหมายของ "คลินิก
 npm install
 ```
 
-## ตั้งค่า `.env.local`
+## Environment variables (secret)
 
-สร้างไฟล์ `.env.local` ที่ root ของโปรเจกต์ (ไฟล์นี้ถูก ignore ใน git แล้ว **ห้าม commit**):
+ทุกค่าเป็น secret **ห้าม commit** ตอนรัน local ให้ใส่ใน `.env.local` (ถูก ignore ใน git แล้ว) ตอน deploy ให้ใส่ใน Vercel → Project → **Settings → Environment Variables** (ปุ่ม Deploy จะขอ 4 ตัวแรกให้กรอกตอนสร้าง project)
+
+| ตัวแปร | จำเป็น | ใช้ทำอะไร |
+|---|---|---|
+| `LINE_CHANNEL_SECRET` | ✅ | ตรวจลายเซ็น webhook ของ LINE |
+| `LINE_CHANNEL_ACCESS_TOKEN` | ✅ | ส่งข้อความตอบกลับลูกค้า |
+| `GOOGLE_SERVICE_ACCOUNT_KEY` | แนะนำ | JSON key ของ service account เป็นบรรทัดเดียว ใช้อ่านและจองคิวใน Google Calendar |
+| `GOOGLE_CALENDAR_ID` | แนะนำ | calendar ที่ใช้เก็บนัด |
+| `AI_GATEWAY_API_KEY` | เฉพาะ local | key ของ AI Gateway บน Vercel ไม่ต้องใส่ เพราะ deployment ใช้ OIDC เอง |
+
+> ถ้าไม่ใส่ค่า Google agent ยังรันได้ แต่จะตอบลูกค้าว่ายังตรวจสอบตารางไม่ได้ ส่วนค่า LINE ต้องมีเสมอ ไม่งั้นแอปเปิดไม่ขึ้น (รายละเอียดด้านล่าง)
+
+### ตั้งค่า `.env.local`
+
+สร้างไฟล์ `.env.local` ที่ root ของโปรเจกต์:
 
 ```bash
 LINE_CHANNEL_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -49,7 +67,14 @@ GOOGLE_CALENDAR_ID=xxxxxxxx@group.calendar.google.com
 
 ถ้ายังไม่ได้ตั้งค่า agent ยังรันได้ แต่จะตอบลูกค้าว่ายังตรวจสอบตารางไม่ได้ (ไม่แต่งเวลาว่างเอง)
 
-ช่วงทดสอบไม่ต้องใส่ API key ของโมเดลใน `.env.local` เพราะใช้ ChatGPT subscription ผ่าน `/login` (ดูหัวข้อถัดไป)
+### AI Gateway (โมเดล)
+
+เลือกได้ 1 วิธีสำหรับรัน local:
+
+- **ใช้ API key:** Vercel Dashboard → **AI Gateway → API Keys** → สร้าง key แล้วใส่ `AI_GATEWAY_API_KEY=...` ใน `.env.local`
+- **ใช้ OIDC ของ project:** รัน `npx eve link` เพื่อผูกกับ Vercel project และดึง env มา (token มีอายุจำกัด หมดอายุแล้วให้รันใหม่)
+
+ถ้าจะเปลี่ยนโมเดล ให้แก้ string ใน `agent/agent.ts` หรือรัน `npx eve set --model <provider/model>`
 
 ## รันใน local
 
@@ -57,7 +82,7 @@ GOOGLE_CALENDAR_ID=xxxxxxxx@group.calendar.google.com
 npm run dev
 ```
 
-ครั้งแรกให้พิมพ์ `/login` ใน TUI → เลือก **ChatGPT Subscription** → login ในเบราว์เซอร์ จากนั้นพิมพ์คุยกับ agent ใน terminal ได้เลย eve จะ reload เองเมื่อแก้ไฟล์ใน `agent/`
+พิมพ์คุยกับ agent ใน terminal ได้เลย (ต้องตั้งค่า AI Gateway ตามหัวข้อด้านบนก่อน) eve จะ reload เองเมื่อแก้ไฟล์ใน `agent/`
 
 dev server รันที่ `http://127.0.0.1:2000`
 
@@ -115,15 +140,39 @@ https://xxxx-xxxx-xxxx.trycloudflare.com/eve/v1/line
 | อาการ | สาเหตุที่เป็นไปได้ |
 |---|---|
 | dev server เปิดไม่ขึ้น | ไม่มี `LINE_CHANNEL_SECRET` / `LINE_CHANNEL_ACCESS_TOKEN` ใน `.env.local` หรือ Node ไม่ใช่ 24.x |
+| agent ไม่ตอบ / error เรื่อง gateway | ยังไม่ได้ตั้ง `AI_GATEWAY_API_KEY` หรือ OIDC token หมดอายุ (รัน `npx eve link` ใหม่) |
 | Verify ไม่ผ่าน | ลืมต่อ `/eve/v1/line`, ท่อหรือ dev server ไม่ได้รันอยู่, หรือ URL เป็นของท่อรอบก่อน |
 | ทักแล้ว agent ไม่ตอบ | Use webhook ยังเป็น Off หรือ access token ผิด (ดู log ใน terminal ของ `npm run dev`) |
 | LINE ตอบข้อความอัตโนมัติซ้อน | ยังไม่ได้ปิด Auto-response messages |
+
+## Deploy ขึ้น Vercel
+
+**วิธีที่ 1: ปุ่ม Deploy** กดปุ่ม Deploy with Vercel ด้านบน → เลือก scope → กรอก secret 4 ตัว → Deploy (Vercel จะ clone repo ไปเป็น repo ใหม่ในบัญชีของคุณ และ deploy ใหม่ทุกครั้งที่ push)
+
+**วิธีที่ 2: CLI จากเครื่องนี้**
+
+```bash
+npx eve link --non-interactive --project clinic-appointment
+# ใส่ secret ทีละตัว (ระบบจะถามค่า ไม่ต้องพิมพ์ค่าในคำสั่ง)
+npx vercel env add LINE_CHANNEL_SECRET production
+npx vercel env add LINE_CHANNEL_ACCESS_TOKEN production
+npx vercel env add GOOGLE_SERVICE_ACCOUNT_KEY production
+npx vercel env add GOOGLE_CALENDAR_ID production
+npx eve deploy --non-interactive --yes
+```
+
+### หลัง deploy
+
+1. ตรวจว่าแอปขึ้นแล้ว: `curl https://<project>.vercel.app/eve/v1/health`
+2. เปลี่ยน Webhook URL ใน LINE Developers Console เป็น `https://<project>.vercel.app/eve/v1/line` → **Verify** → เปิด **Use webhook**
+3. ถ้าแก้ env ภายหลัง ต้อง **Redeploy** ค่าใหม่ถึงจะมีผล
+4. ถ้าเปิด Deployment Protection ไว้ LINE จะเรียก webhook ไม่ได้ ให้ปิดสำหรับ Production หรือใช้ Protection Bypass
 
 ## โครงสร้างโปรเจกต์
 
 ```
 agent/
-├── agent.ts                      # เลือกโมเดล (ตอนนี้ chatgpt())
+├── agent.ts                      # เลือกโมเดล (AI Gateway)
 ├── instructions.md               # persona และกฎของผู้ช่วยนัดหมาย
 ├── instructions/
 │   └── current-time.ts           # บอกวันเวลาปัจจุบัน (เวลาไทย) ทุก turn
@@ -142,7 +191,7 @@ agent/
 ## ข้อจำกัดของ PoC
 
 - **ใช้ข้อมูลสมมติเท่านั้น** ห้ามใส่ชื่อ เบอร์โทร หรือข้อมูลลูกค้าจริง เพราะข้อความวิ่งผ่าน OpenAI (PDPA)
-- **ChatGPT subscription ใช้ได้เฉพาะ local** ก่อน deploy ต้องเปลี่ยนโมเดลใน `agent/agent.ts` เป็นแบบ API key และตั้ง key ใน environment ของ server
+- **ค่าใช้จ่ายโมเดล** คิดตามการใช้งานผ่าน AI Gateway ของบัญชี Vercel
 - **State ของ Chat SDK อยู่ใน memory** หายเมื่อ restart production ต้องเปลี่ยนเป็น durable state (Redis/Upstash)
 - `chat-adapter-line` เป็น package ของชุมชน (v0.1.x)
 - ยังไม่มี Flex message (งานถัดไป) ตอนนี้ agent ตอบเวลาว่างเป็นข้อความธรรมดา

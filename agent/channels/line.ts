@@ -10,7 +10,7 @@ import {
   buildBookedFlex,
   buildReviewFlex,
 } from "../lib/booking-flex";
-import { SERVICES } from "../lib/clinic";
+import { findService, getConfig } from "../lib/config";
 import {
   SELECT_SLOT_ACTION,
   buildSlotPickerFlex,
@@ -67,7 +67,7 @@ function buildCard(message: string, card: PendingCard) {
 }
 
 export const { bot, channel, send } = chatSdkChannel({
-  userName: "คลินิกทำหน้า",
+  userName: "ผู้ช่วยนัดหมาย",
   adapters: {
     line: createLineAdapter(),
   },
@@ -131,13 +131,21 @@ bot.onDirectMessage(async (thread, message) => {
   sessions.set(thread.id, await send(message.text, { thread }));
 });
 
+/** ชื่อบริการสำหรับข้อความที่ส่งเข้า agent แทนลูกค้า (ถ้าโหลด config ไม่ได้ ใช้ id แทน agent ยังเข้าใจได้) */
+async function serviceName(serviceId: string): Promise<string> {
+  try {
+    return findService(await getConfig(), serviceId)?.name ?? serviceId;
+  } catch {
+    return serviceId;
+  }
+}
+
 // ลูกค้ากดปุ่มเวลาใน Flex: ส่งเวลาที่เลือกเข้า agent เหมือนลูกค้าพิมพ์บอกเอง
 // agent จะขอชื่อเล่น/เบอร์ และให้ยืนยันก่อนจองตาม instructions
 bot.onAction(SELECT_SLOT_ACTION, async (event) => {
   const slot = decodeSlotValue(event.value);
   if (!event.thread || !slot) return;
-  const service = SERVICES[slot.serviceId];
-  const text = `ขอจอง${service.label} ${formatThaiDate(slot.date, thaiWeekdayOf(slot.date))} (${slot.date}) เวลา ${slot.time} น.`;
+  const text = `ขอจอง${await serviceName(slot.serviceId)} ${formatThaiDate(slot.date, thaiWeekdayOf(slot.date))} (${slot.date}) เวลา ${slot.time} น.`;
   // ActionEvent.thread มี type กว้างกว่าที่ send() รับ แต่เป็น thread ของ adapter เดียวกัน
   const thread = event.thread as Parameters<typeof send>[1]["thread"];
   sessions.set(event.thread.id, await send(text, { thread }));
@@ -148,8 +156,7 @@ bot.onAction(SELECT_SLOT_ACTION, async (event) => {
 bot.onAction(CONFIRM_BOOKING_ACTION, async (event) => {
   const slot = decodeSlotValue(event.value);
   if (!event.thread || !slot) return;
-  const service = SERVICES[slot.serviceId];
-  const text = `ยืนยันการจอง${service.label} ${formatThaiDate(slot.date, thaiWeekdayOf(slot.date))} (${slot.date}) เวลา ${slot.time} น.`;
+  const text = `ยืนยันการจอง${await serviceName(slot.serviceId)} ${formatThaiDate(slot.date, thaiWeekdayOf(slot.date))} (${slot.date}) เวลา ${slot.time} น.`;
   const thread = event.thread as Parameters<typeof send>[1]["thread"];
   sessions.set(event.thread.id, await send(text, { thread }));
 });

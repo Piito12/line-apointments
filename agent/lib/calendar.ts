@@ -1,28 +1,21 @@
-// เชื่อม Google Calendar ด้วย Service Account
+// เชื่อม Google Calendar ด้วย Service Account (ดู google.ts)
 //
 // env ที่ต้องมีใน .env.local:
 //   GOOGLE_SERVICE_ACCOUNT_KEY  JSON ทั้งก้อนของ service account key (บรรทัดเดียว)
 //   GOOGLE_CALENDAR_ID          id ของ calendar ที่ share ให้ service account
 //                               ด้วยสิทธิ์ "Make changes to events"
-//
-// ใช้ scope calendar.events อย่างเดียว (อ่าน/สร้าง/แก้ event) ไม่ใช้ full access
 
 import { createHash } from "node:crypto";
 
-import { auth, calendar, type calendar_v3 } from "@googleapis/calendar";
+import { calendar, type calendar_v3 } from "@googleapis/calendar";
 
-import { SERVICES, type ServiceId } from "./clinic";
+import { GoogleNotConfiguredError, getServiceAccount } from "./google";
 import { localToMs, type BusyInterval } from "./slots";
 
-const SCOPES = ["https://www.googleapis.com/auth/calendar.events"];
 const EVENT_SOURCE = "clinic-appointment-agent";
 
-export class CalendarNotConfiguredError extends Error {
-  constructor(missing: string[]) {
-    super(`ยังไม่ได้ตั้งค่า ${missing.join(", ")} ใน .env.local`);
-    this.name = "CalendarNotConfiguredError";
-  }
-}
+/** ยังไม่ได้ตั้งค่า Google (key หรือ calendar id) ใช้ class เดียวกับ google.ts เพื่อให้ tool เช็คที่เดียว */
+export { GoogleNotConfiguredError as CalendarNotConfiguredError };
 
 interface CalendarContext {
   api: calendar_v3.Calendar;
@@ -38,26 +31,14 @@ export function getCalendarId(): string {
 function getCalendar(): CalendarContext {
   if (cached) return cached;
 
-  const rawKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
   const calendarId = process.env.GOOGLE_CALENDAR_ID;
   const missing = [
-    ...(rawKey ? [] : ["GOOGLE_SERVICE_ACCOUNT_KEY"]),
+    ...(process.env.GOOGLE_SERVICE_ACCOUNT_KEY ? [] : ["GOOGLE_SERVICE_ACCOUNT_KEY"]),
     ...(calendarId ? [] : ["GOOGLE_CALENDAR_ID"]),
   ];
-  if (!rawKey || !calendarId) throw new CalendarNotConfiguredError(missing);
+  if (missing.length > 0 || !calendarId) throw new GoogleNotConfiguredError(missing);
 
-  let key: { client_email?: string; private_key?: string };
-  try {
-    key = JSON.parse(rawKey);
-  } catch {
-    throw new Error("GOOGLE_SERVICE_ACCOUNT_KEY ไม่ใช่ JSON ที่ถูกต้อง");
-  }
-  if (!key.client_email || !key.private_key) {
-    throw new Error("GOOGLE_SERVICE_ACCOUNT_KEY ไม่มี client_email หรือ private_key");
-  }
-
-  const client = new auth.JWT({ email: key.client_email, key: key.private_key, scopes: SCOPES });
-  cached = { api: calendar({ version: "v3", auth: client }), calendarId };
+  cached = { api: calendar({ version: "v3", auth: getServiceAccount() }), calendarId };
   return cached;
 }
 
@@ -114,7 +95,7 @@ export function bookingEventId(calendarId: string, startMs: number): string {
 }
 
 export interface BookingInput {
-  serviceId: ServiceId;
+  service: { id: string; name: string; minutes: number };
   startMs: number;
   nickname: string;
   phone: string;
@@ -132,16 +113,16 @@ function httpStatus(err: unknown): number | undefined {
 /** สร้าง event การจองคิว ถ้าเวลานั้นถูกจองไปแล้วคืน conflict */
 export async function createBooking(input: BookingInput): Promise<BookingResult> {
   const { api, calendarId } = getCalendar();
-  const service = SERVICES[input.serviceId];
+  const { service } = input;
   const endMs = input.startMs + service.minutes * 60_000;
   const eventId = bookingEventId(calendarId, input.startMs);
 
   const requestBody: calendar_v3.Schema$Event = {
     id: eventId,
     status: "confirmed",
-    summary: `${service.label} - ${input.nickname}`,
+    summary: `${service.name} - ${input.nickname}`,
     description: [
-      `บริการ: ${service.label} (${service.minutes} นาที)`,
+      `บริการ: ${service.name} (${service.minutes} นาที)`,
       `ชื่อเล่น: ${input.nickname}`,
       `เบอร์โทร: ${input.phone}`,
       "จองผ่าน LINE (AI agent)",
@@ -149,7 +130,7 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
     start: { dateTime: new Date(input.startMs).toISOString(), timeZone: "Asia/Bangkok" },
     end: { dateTime: new Date(endMs).toISOString(), timeZone: "Asia/Bangkok" },
     extendedProperties: {
-      private: { source: EVENT_SOURCE, service: input.serviceId, phone: input.phone },
+      private: { source: EVENT_SOURCE, service: service.id, phone: input.phone },
     },
   };
 

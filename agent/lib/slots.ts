@@ -1,20 +1,14 @@
-// คำนวณเวลาว่างจากกฎของคลินิก + ช่วงเวลาที่ไม่ว่างจาก calendar
+// คำนวณเวลาว่างจากกฎของร้าน (BookingRules จาก config) + ช่วงเวลาที่ไม่ว่างจาก calendar
 // ไฟล์นี้ไม่เรียก network เลย จึงทดสอบได้โดยไม่ต้องมี credential ของ Google
 // วันที่และเวลาทั้งหมดในไฟล์นี้เป็นเวลาไทย (Asia/Bangkok) ในรูปแบบ "YYYY-MM-DD" และ "HH:mm"
 
-import {
-  BOOKING_WINDOW_DAYS,
-  CLOSE_TIME,
-  CLOSED_WEEKDAYS,
-  MIN_LEAD_MINUTES,
-  OPEN_TIME,
-  SERVICES,
-  SLOT_STEP_MINUTES,
-  THAI_WEEKDAYS,
-  UTC_OFFSET,
-  UTC_OFFSET_MINUTES,
-  type ServiceId,
-} from "./clinic";
+import type { BookingRules } from "./config-schema";
+
+/** Asia/Bangkok ไม่มี daylight saving ใช้ offset คงที่ได้ */
+export const UTC_OFFSET = "+07:00";
+const UTC_OFFSET_MINUTES = 7 * 60;
+
+export const THAI_WEEKDAYS = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"] as const;
 
 const MINUTE = 60_000;
 
@@ -67,9 +61,9 @@ export function isValidDate(date: string): boolean {
 }
 
 /** ช่วงวันที่ที่จองได้ ณ เวลา now */
-export function bookingWindow(now: number): { firstDate: string; lastDate: string } {
+export function bookingWindow(rules: BookingRules, now: number): { firstDate: string; lastDate: string } {
   const firstDate = msToLocal(now).date;
-  return { firstDate, lastDate: addDays(firstDate, BOOKING_WINDOW_DAYS - 1) };
+  return { firstDate, lastDate: addDays(firstDate, rules.bookingWindowDays - 1) };
 }
 
 /** ช่วงเวลาครอบคลุมวันที่ startDate ถึง endDate ทั้งวัน สำหรับดึง event จาก calendar */
@@ -88,7 +82,9 @@ export interface AvailableDay {
 }
 
 export interface SlotQuery {
-  serviceId: ServiceId;
+  rules: BookingRules;
+  /** ระยะเวลาของบริการ (นาที) */
+  durationMinutes: number;
   startDate: string;
   endDate: string;
   busy: readonly BusyInterval[];
@@ -110,8 +106,9 @@ export interface SlotResult {
 
 /** หาเวลาเริ่มของคิวที่ว่างทั้งหมดในช่วงวันที่ที่ขอ */
 export function computeAvailableSlots(q: SlotQuery): SlotResult {
-  const duration = SERVICES[q.serviceId].minutes;
-  const { firstDate, lastDate } = bookingWindow(q.now);
+  const { rules } = q;
+  const duration = q.durationMinutes;
+  const { firstDate, lastDate } = bookingWindow(rules, q.now);
   const notes: string[] = [];
 
   let from = q.startDate;
@@ -122,26 +119,26 @@ export function computeAvailableSlots(q: SlotQuery): SlotResult {
   }
   if (to > lastDate) {
     to = lastDate;
-    notes.push(`จองล่วงหน้าได้ไม่เกิน ${BOOKING_WINDOW_DAYS} วัน ค้นถึง ${lastDate}`);
+    notes.push(`จองล่วงหน้าได้ไม่เกิน ${rules.bookingWindowDays} วัน ค้นถึง ${lastDate}`);
   }
   if (from > to) {
     return { searchedFrom: null, searchedTo: null, days: [], closedDates: [], notes: [...notes, "ช่วงวันที่ที่ขออยู่นอกช่วงที่จองได้"] };
   }
 
-  const open = minutesOf(OPEN_TIME);
-  const close = minutesOf(CLOSE_TIME);
-  const earliestStart = q.now + MIN_LEAD_MINUTES * MINUTE;
+  const open = minutesOf(rules.openTime);
+  const close = minutesOf(rules.closeTime);
+  const earliestStart = q.now + rules.minLeadMinutes * MINUTE;
   const days: AvailableDay[] = [];
   const closedDates: string[] = [];
 
   for (let date = from; date <= to; date = addDays(date, 1)) {
     const weekday = weekdayOf(date);
-    if (CLOSED_WEEKDAYS.includes(weekday)) {
+    if (rules.closedWeekdays.includes(weekday)) {
       closedDates.push(date);
       continue;
     }
     const times: string[] = [];
-    for (let m = open; m + duration <= close; m += SLOT_STEP_MINUTES) {
+    for (let m = open; m + duration <= close; m += rules.slotStepMinutes) {
       const time = timeOf(m);
       if (q.timeFrom && time < q.timeFrom) continue;
       if (q.timeTo && time >= q.timeTo) continue;
@@ -156,25 +153,33 @@ export function computeAvailableSlots(q: SlotQuery): SlotResult {
   return { searchedFrom: from, searchedTo: to, days, closedDates, notes };
 }
 
-/** ตรวจว่าเวลาเริ่มที่ขอจองเป็นไปตามกฎของคลินิกไหม คืนข้อความเหตุผลถ้าไม่ผ่าน */
-export function validateBookingStart(serviceId: ServiceId, date: string, time: string, now: number): string | null {
+/** ตรวจว่าเวลาเริ่มที่ขอจองเป็นไปตามกฎของร้านไหม คืนข้อความเหตุผลถ้าไม่ผ่าน */
+export function validateBookingStart(
+  rules: BookingRules,
+  service: { name: string; minutes: number },
+  date: string,
+  time: string,
+  now: number,
+): string | null {
   if (!isValidDate(date)) return `วันที่ ${date} ไม่ถูกต้อง`;
   if (!TIME_PATTERN.test(time)) return `เวลา ${time} ไม่ถูกต้อง`;
 
-  const { firstDate, lastDate } = bookingWindow(now);
+  const { firstDate, lastDate } = bookingWindow(rules, now);
   if (date < firstDate || date > lastDate) return `จองได้เฉพาะวันที่ ${firstDate} ถึง ${lastDate}`;
-  if (CLOSED_WEEKDAYS.includes(weekdayOf(date))) return `วัน${THAI_WEEKDAYS[weekdayOf(date)]}คลินิกปิด`;
+  if (rules.closedWeekdays.includes(weekdayOf(date))) return `วัน${THAI_WEEKDAYS[weekdayOf(date)]}ร้านปิด`;
 
   const start = minutesOf(time);
-  const duration = SERVICES[serviceId].minutes;
-  if (start < minutesOf(OPEN_TIME) || start + duration > minutesOf(CLOSE_TIME)) {
-    return `คิว ${SERVICES[serviceId].label} (${duration} นาที) ต้องอยู่ในเวลาทำการ ${OPEN_TIME}–${CLOSE_TIME}`;
+  const open = minutesOf(rules.openTime);
+  const duration = service.minutes;
+  if (start < open || start + duration > minutesOf(rules.closeTime)) {
+    return `คิว ${service.name} (${duration} นาที) ต้องอยู่ในเวลาทำการ ${rules.openTime}–${rules.closeTime}`;
   }
-  if ((start - minutesOf(OPEN_TIME)) % SLOT_STEP_MINUTES !== 0) {
-    return `เวลาเริ่มต้องลงทุกๆ ${SLOT_STEP_MINUTES} นาที เช่น 10:00, 10:30`;
+  if ((start - open) % rules.slotStepMinutes !== 0) {
+    const example = timeOf(open + rules.slotStepMinutes);
+    return `เวลาเริ่มต้องลงทุกๆ ${rules.slotStepMinutes} นาที เช่น ${rules.openTime}, ${example}`;
   }
-  if (localToMs(date, time) < now + MIN_LEAD_MINUTES * MINUTE) {
-    return `ต้องจองล่วงหน้าอย่างน้อย ${MIN_LEAD_MINUTES} นาที`;
+  if (localToMs(date, time) < now + rules.minLeadMinutes * MINUTE) {
+    return `ต้องจองล่วงหน้าอย่างน้อย ${rules.minLeadMinutes} นาที`;
   }
   return null;
 }

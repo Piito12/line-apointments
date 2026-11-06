@@ -1,6 +1,6 @@
 # clinic-appointment
 
-AI agent ผู้ช่วยนัดหมายของ "คลินิกทำหน้า" (คลินิกสมมติสำหรับ PoC) สร้างด้วย [eve](https://eve.dev) และคุยกับลูกค้าผ่าน LINE Official Account
+AI agent ผู้ช่วยนัดหมายสำหรับธุรกิจที่รับนัด (คลินิก ร้านตัดผม สปา ฯลฯ) ข้อมูลร้านตั้งค่าได้จาก [Google Sheet](#ตั้งค่าข้อมูลร้าน-google-sheet) โดยไม่ต้องแก้โค้ด ถ้ายังไม่ตั้งค่าจะใช้ "คลินิกทำหน้า" (คลินิกสมมติของ PoC) สร้างด้วย [eve](https://eve.dev) และคุยกับลูกค้าผ่าน LINE Official Account
 
 - **Framework:** eve (Vercel) · TypeScript · Node 24
 - **LINE:** Vercel Chat SDK + [`chat-adapter-line`](https://github.com/PunGrumpy/chat-adapter-line)
@@ -34,6 +34,7 @@ npm install
 | `LINE_CHANNEL_ACCESS_TOKEN` | ✅ | ส่งข้อความตอบกลับลูกค้า |
 | `GOOGLE_SERVICE_ACCOUNT_KEY` | แนะนำ | JSON key ของ service account เป็นบรรทัดเดียว ใช้อ่านและจองคิวใน Google Calendar |
 | `GOOGLE_CALENDAR_ID` | แนะนำ | calendar ที่ใช้เก็บนัด |
+| `CONFIG_SHEET_ID` | ไม่บังคับ | Google Sheet ที่เก็บข้อมูลร้าน (ดู [ตั้งค่าข้อมูลร้าน](#ตั้งค่าข้อมูลร้าน-google-sheet)) ถ้าไม่ใส่ใช้ข้อมูลคลินิกสมมติ |
 | `ANTHROPIC_API_KEY` | ไม่บังคับ | ถ้ามี จะเรียก Claude โดยตรง |
 | `OPENAI_API_KEY` | ไม่บังคับ | ถ้ามี จะเรียก OpenAI โดยตรง |
 | `AI_GATEWAY_API_KEY` | ไม่บังคับ | ถ้ามี จะเรียกผ่าน AI Gateway (บน Vercel ไม่ต้องใส่ เพราะใช้ OIDC เอง) |
@@ -186,7 +187,7 @@ GOOGLE_CALENDAR_ID=xxxxxxxx@group.calendar.google.com
 
 - event ใดๆ ในปฏิทินที่ไม่ได้ตั้งเป็น **Free** ถือว่าเวลานั้นไม่ว่าง (รับทีละ 1 คิว) จะบล็อกเวลาเอง เช่น พักเที่ยง ให้สร้าง event ธรรมดาในปฏิทินนี้ได้เลย
 - event ทั้งวัน (all-day) จะบล็อกทั้งวัน
-- เวลาทั้งหมดเป็นเวลาไทย (`Asia/Bangkok`) เวลาทำการและรายการบริการแก้ได้ที่ `agent/lib/clinic.ts`
+- เวลาทั้งหมดเป็นเวลาไทย (`Asia/Bangkok`) เวลาทำการและรายการบริการแก้ได้ใน [Google Sheet ข้อมูลร้าน](#ตั้งค่าข้อมูลร้าน-google-sheet)
 - กันจองซ้ำ: event id คำนวณจากเวลาเริ่ม ถ้ากดยืนยันซ้ำหรือ LINE ส่ง event ซ้ำจะไม่เกิดนัดซ้อน
 
 ### แก้ปัญหา Google Calendar
@@ -198,6 +199,49 @@ GOOGLE_CALENDAR_ID=xxxxxxxx@group.calendar.google.com
 | error 404 Not Found | Calendar ID ผิด หรือยังไม่ได้แชร์ปฏิทินให้ `client_email` |
 | error 403 | แชร์ด้วยสิทธิ์แค่ดู ต้องเป็น **Make changes to events** หรือยังไม่ได้ Enable Calendar API |
 | เวลาว่างไม่ตรงกับที่เห็น | มี event ที่ไม่ได้ตั้งเป็น Free บล็อกอยู่ หรือดูคนละปฏิทินกับที่ตั้ง ID ไว้ |
+
+## ตั้งค่าข้อมูลร้าน (Google Sheet)
+
+ชื่อร้าน บริการ เวลาทำการ วันปิด และกฎเฉพาะของร้าน ตั้งค่าได้ใน Google Sheet โดยไม่ต้องแก้โค้ดหรือ deploy ใหม่ agent อ่านด้วย Service Account ตัวเดียวกับ Google Calendar
+
+### 1. สร้าง Sheet จาก template
+
+1. ดาวน์โหลด [`templates/business-config-template.xlsx`](templates/business-config-template.xlsx)
+2. เปิด [Google Drive](https://drive.google.com/) → **New → File upload** → เลือกไฟล์ → เปิดไฟล์ → **File → Save as Google Sheets**
+3. แก้ข้อมูลในแท็บ `settings` และ `services` (แท็บ `วิธีใช้` อธิบายแต่ละช่อง) **ห้ามเปลี่ยนชื่อแท็บ คอลัมน์ `key` และหัวตาราง**
+
+| แท็บ | เก็บอะไร |
+|---|---|
+| `settings` | `business_name` (บังคับ), `business_type`, `contact`, `open_time`, `close_time`, `closed_weekdays` (เช่น `จันทร์, อังคาร`), `slot_step_minutes`, `booking_window_days`, `min_lead_minutes`, `extra_instructions` (กฎเฉพาะร้าน เช่น ห้ามให้คำแนะนำทางการแพทย์) ช่องตัวเลขหรือเวลาที่เว้นว่างจะใช้ค่าเริ่มต้น |
+| `services` | `id` (a-z 0-9 _ - ห้ามซ้ำ ลูกค้าไม่เห็น), `name` (ชื่อที่ลูกค้าเห็น), `minutes` (ระยะเวลาต่อคิว) |
+
+### 2. เปิด Google Sheets API และแชร์ Sheet
+
+1. Google Cloud Console (project เดียวกับ Calendar) → **APIs & Services → Library** → ค้นหา **Google Sheets API** → **Enable**
+2. ใน Sheet กด **Share** → ใส่ `client_email` ของ service account → สิทธิ์ **Viewer**
+3. คัดลอก Sheet ID จาก URL `https://docs.google.com/spreadsheets/d/<Sheet ID>/edit`
+
+### 3. ใส่ค่าใน env
+
+```bash
+CONFIG_SHEET_ID=<Sheet ID>
+```
+
+local ใส่ใน `.env.local` แล้ว restart `npm run dev` บน Vercel เพิ่มใน Environment Variables แล้ว Redeploy (ครั้งเดียว หลังจากนั้นแก้แค่ Sheet)
+
+### พฤติกรรม
+
+- แก้ Sheet แล้ว agent เห็นค่าใหม่ภายใน **5 นาที** (cache ไว้เพื่อไม่ยิง Sheet ทุกข้อความ)
+- ถ้ากรอกผิด เช่น เวลาปิดก่อนเวลาเปิด หรือ `minutes` ไม่ใช่ตัวเลข agent ใช้ค่าที่ถูกต้องล่าสุดต่อ และเขียนสาเหตุพร้อมเลขแถวใน log เช่น `services แถว 4 (minutes): ต้องเป็นตัวเลข (จำนวนนาที)`
+- ถ้าตั้ง `CONFIG_SHEET_ID` แต่อ่าน Sheet ไม่ได้ตั้งแต่ครั้งแรก agent จะบอกลูกค้าว่าระบบขัดข้องชั่วคราว (ไม่ใช้ข้อมูลคลินิกสมมติแทน เพราะจะเสนอบริการที่ร้านไม่มี)
+- persona และกฎกลาง (เช่น ห้ามแต่งเวลาว่าง) อยู่ใน `agent/instructions.md` ใช้ได้กับทุกธุรกิจ ส่วนข้อมูลร้านถูกสร้างจาก Sheet ทุก turn
+
+| อาการ | สาเหตุที่เป็นไปได้ |
+|---|---|
+| log `โหลดข้อมูลร้านจาก Google Sheet ไม่สำเร็จ` + 403 | ยังไม่ได้ Enable Google Sheets API หรือยังไม่ได้แชร์ Sheet ให้ `client_email` |
+| log 404 / `Unable to parse range` | `CONFIG_SHEET_ID` ผิด หรือเปลี่ยนชื่อแท็บ `settings` / `services` |
+| log `ข้อมูลร้านใน Sheet ไม่ถูกต้อง` | ดูรายการปัญหาและเลขแถวใน log แล้วแก้ใน Sheet |
+| แก้ Sheet แล้วยังเห็นค่าเก่า | รอไม่เกิน 5 นาที หรือ restart server |
 
 ## Deploy ขึ้น Vercel
 
@@ -227,8 +271,9 @@ npx eve deploy --non-interactive --yes
 ```
 agent/
 ├── agent.ts                      # เลือกโมเดลตาม API key ที่มี
-├── instructions.md               # persona และกฎของผู้ช่วยนัดหมาย
+├── instructions.md               # persona และกฎกลางของผู้ช่วยนัดหมาย (ใช้ได้ทุกธุรกิจ)
 ├── instructions/
+│   ├── business.ts               # ข้อมูลร้านจาก config ใส่ใน prompt ทุก turn
 │   └── current-time.ts           # บอกวันเวลาปัจจุบัน (เวลาไทย) ทุก turn
 ├── channels/
 │   ├── eve.ts                    # HTTP session API + TUI ของ eve
@@ -237,9 +282,13 @@ agent/
 │   ├── get_available_slots.ts    # ดูเวลาว่างจาก Google Calendar
 │   └── book_appointment.ts       # จองคิวลง Google Calendar
 └── lib/
-    ├── clinic.ts                 # ข้อมูลคลินิก: เวลาทำการ บริการ ระยะเวลา (ข้อมูลสมมติ)
+    ├── config.ts                 # โหลดข้อมูลร้านจาก Google Sheet (cache 5 นาที) หรือใช้ค่าเริ่มต้น
+    ├── config-schema.ts          # โครงสร้างข้อมูลร้าน ค่าเริ่มต้น และตัวตรวจข้อมูลจาก Sheet
+    ├── google.ts                 # Service Account ที่ใช้ร่วมกันระหว่าง Calendar และ Sheets
     ├── slots.ts                  # คำนวณเวลาว่าง (ไม่เรียก network)
     └── calendar.ts               # Google Calendar client (Service Account)
+templates/
+└── business-config-template.xlsx # template ข้อมูลร้าน สำหรับ upload เป็น Google Sheet
 ```
 
 ## ข้อจำกัดของ PoC

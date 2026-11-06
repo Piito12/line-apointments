@@ -105,7 +105,7 @@ export function buildBookedFlex(message: string, d: BookingDetails) {
     altText: message.slice(0, 400),
     contents: {
       type: "bubble",
-      header: header("จองคิวสำเร็จ ✓", "คลินิกทำหน้า", SUCCESS),
+      header: header("จองคิวสำเร็จ ✓", d.businessName, SUCCESS),
       body: {
         type: "box",
         layout: "vertical",
@@ -115,7 +115,7 @@ export function buildBookedFlex(message: string, d: BookingDetails) {
           { type: "text", text: message, wrap: true, size: "sm", margin: "lg" },
           {
             type: "text",
-            text: "หากต้องการเลื่อนหรือยกเลิกนัด กรุณาติดต่อคลินิก",
+            text: `หากต้องการเลื่อนหรือยกเลิกนัด กรุณาติดต่อ${d.businessName}${d.contact ? ` ${d.contact}` : ""}`,
             wrap: true,
             size: "xs",
             color: "#888888",

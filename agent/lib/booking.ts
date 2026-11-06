@@ -2,12 +2,12 @@
 
 import { z } from "zod";
 
-import { SERVICE_IDS, SERVICES, type ServiceId } from "./clinic";
-import { bookingEventId, getCalendarId, listBusyIntervals } from "./calendar";
+import { CalendarNotConfiguredError, bookingEventId, getCalendarId, listBusyIntervals } from "./calendar";
+import { ConfigUnavailableError, findService, type BusinessConfig, type Service } from "./config";
 import { DATE_PATTERN, TIME_PATTERN, localToMs, msToLocal, thaiWeekdayOf, validateBookingStart } from "./slots";
 
 export const bookingInputSchema = z.object({
-  service: z.enum(SERVICE_IDS),
+  service: z.string().trim().min(1).describe("id ของบริการ จากรายการบริการในข้อมูลร้าน"),
   date: z.string().regex(DATE_PATTERN).describe("วันที่นัด YYYY-MM-DD (เวลาไทย)"),
   time: z.string().regex(TIME_PATTERN).describe("เวลาเริ่ม HH:mm (เวลาไทย)"),
   nickname: z.string().trim().min(1).max(50).describe("ชื่อเล่นของลูกค้า"),
@@ -29,36 +29,49 @@ export function maskPhone(digits: string): string {
 
 export const SLOT_TAKEN_MESSAGE = "เวลานี้ถูกจองไปแล้ว ให้เสนอเวลาอื่นจาก get_available_slots";
 
+export function unknownServiceResult(config: BusinessConfig, id: string) {
+  return {
+    ok: false as const,
+    reason: "unknown_service" as const,
+    message: `ไม่มีบริการ id "${id}" ใช้ id จากรายการนี้เท่านั้น: ${config.services.map((s) => s.id).join(", ")}`,
+  };
+}
+
 export type BookingCheck =
-  | { ok: false; reason: "invalid_phone" | "invalid_time" | "slot_taken"; message: string }
-  | { ok: true; serviceId: ServiceId; startMs: number; endMs: number; phoneDigits: string };
+  | { ok: false; reason: "invalid_phone" | "invalid_time" | "slot_taken" | "unknown_service"; message: string }
+  | { ok: true; service: Service; startMs: number; endMs: number; phoneDigits: string };
 
 /**
- * ตรวจเบอร์ ตรวจกฎของคลินิก และเช็คว่าเวลายังว่างใน calendar
+ * ตรวจบริการ ตรวจเบอร์ ตรวจกฎของร้าน และเช็คว่าเวลายังว่างใน calendar
  * ไม่นับ event ที่มี id ของการจองนี้เอง เพื่อให้คำขอที่ถูกส่งซ้ำได้ผลเดิม
  * (อาจ throw CalendarNotConfiguredError หรือ error จาก Google ให้ tool จัดการ)
  */
-export async function checkBooking(req: BookingRequest): Promise<BookingCheck> {
+export async function checkBooking(config: BusinessConfig, req: BookingRequest): Promise<BookingCheck> {
+  const service = findService(config, req.service);
+  if (!service) return unknownServiceResult(config, req.service);
+
   const phoneDigits = normalizePhone(req.phone);
   if (!phoneDigits) {
     return { ok: false, reason: "invalid_phone", message: "เบอร์โทรไม่ถูกต้อง ต้องเป็นเบอร์ไทย 9–10 หลักขึ้นต้นด้วย 0" };
   }
 
-  const invalid = validateBookingStart(req.service, req.date, req.time, Date.now());
+  const invalid = validateBookingStart(config.rules, service, req.date, req.time, Date.now());
   if (invalid) return { ok: false, reason: "invalid_time", message: invalid };
 
   const startMs = localToMs(req.date, req.time);
-  const endMs = startMs + SERVICES[req.service].minutes * 60_000;
+  const endMs = startMs + service.minutes * 60_000;
   const busy = await listBusyIntervals(startMs, endMs, bookingEventId(getCalendarId(), startMs));
   if (busy.some((b) => startMs < b.endMs && b.startMs < endMs)) {
     return { ok: false, reason: "slot_taken", message: SLOT_TAKEN_MESSAGE };
   }
-  return { ok: true, serviceId: req.service, startMs, endMs, phoneDigits };
+  return { ok: true, service, startMs, endMs, phoneDigits };
 }
 
 /** รายละเอียดการจองสำหรับส่งกลับให้โมเดลและใช้สร้างการ์ด (เบอร์ถูกซ่อนบางส่วน) */
 export interface BookingDetails {
-  serviceId: ServiceId;
+  businessName: string;
+  contact: string;
+  serviceId: string;
   service: string;
   date: string;
   weekday: string;
@@ -69,16 +82,38 @@ export interface BookingDetails {
   phoneMasked: string;
 }
 
-export function bookingDetails(req: BookingRequest, check: Extract<BookingCheck, { ok: true }>): BookingDetails {
+export function bookingDetails(
+  config: BusinessConfig,
+  req: BookingRequest,
+  check: Extract<BookingCheck, { ok: true }>,
+): BookingDetails {
   return {
-    serviceId: req.service,
-    service: SERVICES[req.service].label,
+    businessName: config.businessName,
+    contact: config.contact,
+    serviceId: check.service.id,
+    service: check.service.name,
     date: req.date,
     weekday: thaiWeekdayOf(req.date),
     time: req.time,
     endTime: msToLocal(check.endMs).time,
-    durationMinutes: SERVICES[req.service].minutes,
+    durationMinutes: check.service.minutes,
     nickname: req.nickname,
     phoneMasked: maskPhone(check.phoneDigits),
   };
+}
+
+/**
+ * แปลง error ที่เกิดใน tool เป็นผลลัพธ์ ok: false ให้โมเดลบอกลูกค้าได้
+ * (error ที่ไม่รู้จักเขียน log ไว้ดูภายหลัง ไม่ส่งรายละเอียดทางเทคนิคให้โมเดล)
+ */
+export function toolErrorResult(tool: string, err: unknown, failMessage: string) {
+  if (err instanceof ConfigUnavailableError) {
+    console.error(`[${tool}]`, err.message);
+    return { ok: false as const, reason: "config_unavailable" as const, message: "โหลดข้อมูลร้านไม่สำเร็จ ระบบยังไม่พร้อมใช้งาน" };
+  }
+  if (err instanceof CalendarNotConfiguredError) {
+    return { ok: false as const, reason: "calendar_not_configured" as const, message: "ระบบตารางนัดยังไม่พร้อมใช้งาน" };
+  }
+  console.error(`[${tool}] calendar error`, err);
+  return { ok: false as const, reason: "calendar_error" as const, message: failMessage };
 }

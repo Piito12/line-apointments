@@ -4,8 +4,6 @@
 
 import { serializePostbackData } from "chat-adapter-line";
 
-import { SERVICES, type ServiceId } from "./clinic";
-
 export const SELECT_SLOT_ACTION = "select_slot";
 
 const MAX_DAYS = 3;
@@ -17,7 +15,10 @@ const THAI_MONTHS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.
 
 /** ผลลัพธ์ของ get_available_slots ส่วนที่ใช้สร้างการ์ด */
 export interface SlotPickerData {
-  serviceId: ServiceId;
+  serviceId: string;
+  /** ชื่อบริการ */
+  service: string;
+  durationMinutes: number;
   days: { date: string; weekday: string; times: string[] }[];
 }
 
@@ -27,16 +28,16 @@ export function formatThaiDate(date: string, weekday: string): string {
 }
 
 /** ค่าที่ฝังใน postback ของปุ่ม: "serviceId|YYYY-MM-DD|HH:mm" */
-export function encodeSlotValue(serviceId: ServiceId, date: string, time: string): string {
+export function encodeSlotValue(serviceId: string, date: string, time: string): string {
   return `${serviceId}|${date}|${time}`;
 }
 
-export function decodeSlotValue(value: string | undefined): { serviceId: ServiceId; date: string; time: string } | null {
+export function decodeSlotValue(value: string | undefined): { serviceId: string; date: string; time: string } | null {
   const [serviceId, date, time] = (value ?? "").split("|");
-  if (!(serviceId in SERVICES) || !/^\d{4}-\d{2}-\d{2}$/.test(date ?? "") || !/^\d{2}:\d{2}$/.test(time ?? "")) {
+  if (!/^[a-z0-9_-]{1,40}$/.test(serviceId ?? "") || !/^\d{4}-\d{2}-\d{2}$/.test(date ?? "") || !/^\d{2}:\d{2}$/.test(time ?? "")) {
     return null;
   }
-  return { serviceId: serviceId as ServiceId, date, time };
+  return { serviceId, date, time };
 }
 
 /** มีเวลาว่างให้แสดงไหม (ถ้าไม่มี ส่งเป็นข้อความธรรมดา) */
@@ -49,7 +50,6 @@ export function hasSelectableSlots(data: SlotPickerData): boolean {
  * รวมไว้ในการ์ดเดียวเพื่อส่งครั้งเดียวด้วย Reply API (ไม่เสีย quota ของ Push API)
  */
 export function buildSlotPickerFlex(message: string, data: SlotPickerData) {
-  const service = SERVICES[data.serviceId];
   const days = data.days.filter((d) => d.times.length > 0);
   const shownDays = days.slice(0, MAX_DAYS);
   const truncated = days.length > MAX_DAYS || shownDays.some((d) => d.times.length > MAX_TIMES_PER_DAY);
@@ -74,7 +74,7 @@ export function buildSlotPickerFlex(message: string, data: SlotPickerData) {
               type: "postback",
               label: time,
               data: serializePostbackData(SELECT_SLOT_ACTION, encodeSlotValue(data.serviceId, day.date, time)),
-              displayText: `ขอจอง${service.label} ${dateLabel} เวลา ${time} น.`,
+              displayText: `ขอจอง${data.service} ${dateLabel} เวลา ${time} น.`,
             },
           })),
           // เติมช่องว่างให้ปุ่มแถวสุดท้ายกว้างเท่าแถวอื่น
@@ -99,7 +99,7 @@ export function buildSlotPickerFlex(message: string, data: SlotPickerData) {
         paddingAll: "md",
         contents: [
           { type: "text", text: "เลือกเวลานัด", color: "#FFFFFF", weight: "bold", size: "md" },
-          { type: "text", text: `${service.label} · ${service.minutes} นาที`, color: "#FFFFFFCC", size: "xs" },
+          { type: "text", text: `${data.service} · ${data.durationMinutes} นาที`, color: "#FFFFFFCC", size: "xs" },
         ],
       },
       body: {

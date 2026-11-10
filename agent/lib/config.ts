@@ -15,7 +15,7 @@ import { getServiceAccount } from "./google";
 
 export * from "./config-schema";
 
-const CACHE_TTL_MS = 5 * 60_000;
+const CACHE_TTL_MS = 60_000;
 
 export class ConfigUnavailableError extends Error {
   constructor(cause: unknown) {

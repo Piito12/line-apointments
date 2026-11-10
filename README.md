@@ -231,7 +231,7 @@ local ใส่ใน `.env.local` แล้ว restart `npm run dev` บน Ver
 
 ### พฤติกรรม
 
-- แก้ Sheet แล้ว agent เห็นค่าใหม่ภายใน **5 นาที** (cache ไว้เพื่อไม่ยิง Sheet ทุกข้อความ)
+- แก้ Sheet แล้ว agent เห็นค่าใหม่ภายใน **1 นาที** (cache ไว้เพื่อไม่ยิง Sheet ทุกข้อความ) และใช้ค่าใหม่ทันทีแม้ในแชทเดิมที่เคยตอบค่าเก่าไปแล้ว
 - ถ้ากรอกผิด เช่น เวลาปิดก่อนเวลาเปิด หรือ `minutes` ไม่ใช่ตัวเลข agent ใช้ค่าที่ถูกต้องล่าสุดต่อ และเขียนสาเหตุพร้อมเลขแถวใน log เช่น `services แถว 4 (minutes): ต้องเป็นตัวเลข (จำนวนนาที)`
 - ถ้าตั้ง `CONFIG_SHEET_ID` แต่อ่าน Sheet ไม่ได้ตั้งแต่ครั้งแรก agent จะบอกลูกค้าว่าระบบขัดข้องชั่วคราว (ไม่ใช้ข้อมูลคลินิกสมมติแทน เพราะจะเสนอบริการที่ร้านไม่มี)
 - persona และกฎกลาง (เช่น ห้ามแต่งเวลาว่าง) อยู่ใน `agent/instructions.md` ใช้ได้กับทุกธุรกิจ ส่วนข้อมูลร้านถูกสร้างจาก Sheet ทุก turn
@@ -241,7 +241,7 @@ local ใส่ใน `.env.local` แล้ว restart `npm run dev` บน Ver
 | log `โหลดข้อมูลร้านจาก Google Sheet ไม่สำเร็จ` + 403 | ยังไม่ได้ Enable Google Sheets API หรือยังไม่ได้แชร์ Sheet ให้ `client_email` |
 | log 404 / `Unable to parse range` | `CONFIG_SHEET_ID` ผิด หรือเปลี่ยนชื่อแท็บ `settings` / `services` |
 | log `ข้อมูลร้านใน Sheet ไม่ถูกต้อง` | ดูรายการปัญหาและเลขแถวใน log แล้วแก้ใน Sheet |
-| แก้ Sheet แล้วยังเห็นค่าเก่า | รอไม่เกิน 5 นาที หรือ restart server |
+| แก้ Sheet แล้วยังเห็นค่าเก่า | รอไม่เกิน 1 นาที หรือ restart server ถ้า agent ยังตอบค่าเก่าในแชทเดิม ให้พิมพ์ `เริ่มใหม่` ใน LINE |
 
 ## Deploy ขึ้น Vercel
 
@@ -282,7 +282,7 @@ agent/
 │   ├── get_available_slots.ts    # ดูเวลาว่างจาก Google Calendar
 │   └── book_appointment.ts       # จองคิวลง Google Calendar
 └── lib/
-    ├── config.ts                 # โหลดข้อมูลร้านจาก Google Sheet (cache 5 นาที) หรือใช้ค่าเริ่มต้น
+    ├── config.ts                 # โหลดข้อมูลร้านจาก Google Sheet (cache 1 นาที) หรือใช้ค่าเริ่มต้น
     ├── config-schema.ts          # โครงสร้างข้อมูลร้าน ค่าเริ่มต้น และตัวตรวจข้อมูลจาก Sheet
     ├── google.ts                 # Service Account ที่ใช้ร่วมกันระหว่าง Calendar และ Sheets
     ├── slots.ts                  # คำนวณเวลาว่าง (ไม่เรียก network)

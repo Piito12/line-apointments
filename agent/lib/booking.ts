@@ -2,12 +2,26 @@
 
 import { z } from "zod";
 
-import { CalendarNotConfiguredError, bookingEventId, getCalendarId, listBusyIntervals } from "./calendar";
-import { ConfigUnavailableError, findService, type BusinessConfig, type Service } from "./config";
-import { DATE_PATTERN, TIME_PATTERN, localToMs, msToLocal, thaiWeekdayOf, validateBookingStart } from "./slots";
+import { CalendarNotConfiguredError, bookingEventId } from "./calendar";
+import { ANY_STAFF, ConfigUnavailableError, findService, type BusinessConfig, type Service } from "./config";
+import {
+  DATE_PATTERN,
+  TIME_PATTERN,
+  dateRangeToMs,
+  localToMs,
+  msToLocal,
+  thaiWeekdayOf,
+  validateBookingStart,
+} from "./slots";
+import { chooseProvider, pickProviders, readProvidersBusy, type Provider } from "./staff";
 
 export const bookingInputSchema = z.object({
   service: z.string().trim().min(1).describe("id ของบริการ จากรายการบริการในข้อมูลร้าน"),
+  staff: z
+    .string()
+    .trim()
+    .optional()
+    .describe(`id ของผู้ให้บริการ หรือ "${ANY_STAFF}" = ใครก็ได้ที่ว่าง (ร้านที่ไม่แยกผู้ให้บริการไม่ต้องใส่)`),
   date: z.string().regex(DATE_PATTERN).describe("วันที่นัด YYYY-MM-DD (เวลาไทย)"),
   time: z.string().regex(TIME_PATTERN).describe("เวลาเริ่ม HH:mm (เวลาไทย)"),
   nickname: z.string().trim().min(1).max(50).describe("ชื่อเล่นของลูกค้า"),
@@ -38,15 +52,35 @@ export function unknownServiceResult(config: BusinessConfig, id: string) {
 }
 
 export type BookingCheck =
-  | { ok: false; reason: "invalid_phone" | "invalid_time" | "slot_taken" | "unknown_service"; message: string }
-  | { ok: true; service: Service; startMs: number; endMs: number; phoneDigits: string };
+  | {
+      ok: false;
+      reason: "invalid_phone" | "invalid_time" | "slot_taken" | "unknown_service" | "unknown_staff";
+      message: string;
+    }
+  | {
+      ok: true;
+      service: Service;
+      /** คนที่ได้รับคิวนี้ (ถ้าลูกค้าเลือกใครก็ได้ ระบบเลือกให้แล้ว) */
+      provider: Provider;
+      /** สิ่งที่ลูกค้าขอ: id ของคน / "any" / "" (ร้านไม่แยกผู้ให้บริการ) */
+      requestedStaff: string;
+      startMs: number;
+      endMs: number;
+      phoneDigits: string;
+    };
 
 /**
- * ตรวจบริการ ตรวจเบอร์ ตรวจกฎของร้าน และเช็คว่าเวลายังว่างใน calendar
- * ไม่นับ event ที่มี id ของการจองนี้เอง เพื่อให้คำขอที่ถูกส่งซ้ำได้ผลเดิม
+ * ตรวจบริการ ผู้ให้บริการ เบอร์ กฎของร้าน และเช็คว่าเวลายังว่างใน calendar
+ * ถ้าลูกค้าเลือกใครก็ได้ เลือกคนที่ว่างและมีคิวน้อยสุดในวันนั้น
+ * ไม่นับ event การจองเดิมของลูกค้าคนนี้ เพื่อให้คำขอที่ถูกส่งซ้ำได้ผลเดิม
  * (อาจ throw CalendarNotConfiguredError หรือ error จาก Google ให้ tool จัดการ)
  */
-export async function checkBooking(config: BusinessConfig, req: BookingRequest): Promise<BookingCheck> {
+export async function checkBooking(
+  config: BusinessConfig,
+  req: BookingRequest,
+  /** id ของคนที่ไม่ต้องพิจารณา (เช่น calendar ของคนนั้นเขียนไม่ได้) ใช้เฉพาะตอนลูกค้าเลือกใครก็ได้ */
+  skipStaff: ReadonlySet<string> = new Set(),
+): Promise<BookingCheck> {
   const service = findService(config, req.service);
   if (!service) return unknownServiceResult(config, req.service);
 
@@ -58,13 +92,31 @@ export async function checkBooking(config: BusinessConfig, req: BookingRequest):
   const invalid = validateBookingStart(config.rules, service, req.date, req.time, Date.now());
   if (invalid) return { ok: false, reason: "invalid_time", message: invalid };
 
+  const pick = pickProviders(config, service, req.staff);
+  if (!pick.ok) return pick;
+  const providers = pick.providers.filter((p) => !skipStaff.has(p.id));
+  if (providers.length === 0) return { ok: false, reason: "slot_taken", message: SLOT_TAKEN_MESSAGE };
+
   const startMs = localToMs(req.date, req.time);
   const endMs = startMs + service.minutes * 60_000;
-  const busy = await listBusyIntervals(startMs, endMs, bookingEventId(getCalendarId(), startMs));
-  if (busy.some((b) => startMs < b.endMs && b.startMs < endMs)) {
-    return { ok: false, reason: "slot_taken", message: SLOT_TAKEN_MESSAGE };
-  }
-  return { ok: true, service, startMs, endMs, phoneDigits };
+  // อ่านทั้งวัน: ใช้ทั้งเช็คว่าเวลานี้ว่าง และนับคิวของแต่ละคนในวันนั้น
+  const { timeMin, timeMax } = dateRangeToMs(req.date, req.date);
+  const busy = await readProvidersBusy(providers, timeMin, timeMax, (p) => ({
+    eventId: bookingEventId(p.calendarId, startMs),
+    phone: phoneDigits,
+  }));
+  const free = busy.filter((b) => !b.busy.some((i) => startMs < i.endMs && i.startMs < endMs));
+  if (free.length === 0) return { ok: false, reason: "slot_taken", message: SLOT_TAKEN_MESSAGE };
+
+  return {
+    ok: true,
+    service,
+    provider: chooseProvider(free).provider,
+    requestedStaff: pick.requested,
+    startMs,
+    endMs,
+    phoneDigits,
+  };
 }
 
 /** รายละเอียดการจองสำหรับส่งกลับให้โมเดลและใช้สร้างการ์ด (เบอร์ถูกซ่อนบางส่วน) */
@@ -73,6 +125,9 @@ export interface BookingDetails {
   contact: string;
   serviceId: string;
   service: string;
+  /** id ของผู้ให้บริการที่ได้คิว ("" = ร้านไม่แยกผู้ให้บริการ) */
+  staffId: string;
+  staffName: string;
   date: string;
   weekday: string;
   time: string;
@@ -92,6 +147,8 @@ export function bookingDetails(
     contact: config.contact,
     serviceId: check.service.id,
     service: check.service.name,
+    staffId: check.provider.id,
+    staffName: check.provider.name,
     date: req.date,
     weekday: thaiWeekdayOf(req.date),
     time: req.time,

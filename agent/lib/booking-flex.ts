@@ -30,6 +30,7 @@ function detailRow(label: string, value: string) {
 function detailRows(d: BookingDetails) {
   return [
     detailRow("บริการ", `${d.service} (${d.durationMinutes} นาที)`),
+    ...(d.staffName ? [detailRow("ผู้ให้บริการ", d.staffName)] : []),
     detailRow("วัน", formatThaiDate(d.date, d.weekday)),
     detailRow("เวลา", `${d.time}–${d.endTime} น.`),
     detailRow("ชื่อเล่น", d.nickname),
@@ -52,7 +53,7 @@ function header(title: string, subtitle: string, color: string) {
 
 /** การ์ดสรุปก่อนจอง พร้อมปุ่มยืนยัน */
 export function buildReviewFlex(message: string, d: BookingDetails) {
-  const slot = encodeSlotValue(d.serviceId, d.date, d.time);
+  const slot = encodeSlotValue(d.serviceId, d.staffId, d.date, d.time);
   return {
     altText: message.slice(0, 400),
     contents: {
@@ -80,7 +81,7 @@ export function buildReviewFlex(message: string, d: BookingDetails) {
               type: "postback",
               label: "ยืนยันการจอง",
               data: serializePostbackData(CONFIRM_BOOKING_ACTION, slot),
-              displayText: `ยืนยันการจอง${d.service} ${formatThaiDate(d.date, d.weekday)} เวลา ${d.time} น.`,
+              displayText: `ยืนยันการจอง${d.service}${d.staffName ? ` กับ${d.staffName}` : ""} ${formatThaiDate(d.date, d.weekday)} เวลา ${d.time} น.`,
             },
           },
           {

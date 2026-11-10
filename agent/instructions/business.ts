@@ -21,6 +21,16 @@ function render(c: BusinessConfig): string {
     "- บริการ (ใช้ id ในวงเล็บเหลี่ยมเวลาเรียกเครื่องมือ ห้ามบอก id ให้ลูกค้า):",
     ...c.services.map((s) => `  - [${s.id}] ${s.name} (${s.minutes} นาที)`),
   ];
+  if (c.staff.length > 0) {
+    const serviceName = (id: string) => c.services.find((s) => s.id === id)?.name ?? id;
+    lines.push(
+      "- ผู้ให้บริการ (ใช้ id ในวงเล็บเหลี่ยมเป็นค่า staff เวลาเรียกเครื่องมือ ห้ามบอก id ให้ลูกค้า):",
+      ...c.staff.map(
+        (p) =>
+          `  - [${p.id}] ${p.name} — ${p.serviceIds === "all" ? "ทุกบริการ" : p.serviceIds.map(serviceName).join(", ")}`,
+      ),
+    );
+  }
   if (c.extraInstructions.trim()) {
     lines.push("", "# กฎเฉพาะของร้านนี้", "", c.extraInstructions.trim());
   }

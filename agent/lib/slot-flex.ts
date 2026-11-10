@@ -18,6 +18,10 @@ export interface SlotPickerData {
   serviceId: string;
   /** ชื่อบริการ */
   service: string;
+  /** id ผู้ให้บริการที่ลูกค้าขอ / "any" / "" (ร้านไม่แยกผู้ให้บริการ) */
+  staffId: string;
+  /** ชื่อผู้ให้บริการ (ว่างถ้าเป็นใครก็ได้หรือร้านไม่แยกคน) */
+  staffName: string;
   durationMinutes: number;
   days: { date: string; weekday: string; times: string[] }[];
 }
@@ -27,17 +31,33 @@ export function formatThaiDate(date: string, weekday: string): string {
   return `${weekday} ${d} ${THAI_MONTHS[m - 1]}`;
 }
 
-/** ค่าที่ฝังใน postback ของปุ่ม: "serviceId|YYYY-MM-DD|HH:mm" */
-export function encodeSlotValue(serviceId: string, date: string, time: string): string {
-  return `${serviceId}|${date}|${time}`;
+const ID = /^[a-z0-9_-]{1,40}$/;
+
+/**
+ * ค่าที่ฝังใน postback ของปุ่ม: "serviceId|staffId|YYYY-MM-DD|HH:mm"
+ * ร้านที่ไม่แยกผู้ให้บริการ (staffId ว่าง) ใช้แบบเดิม "serviceId|YYYY-MM-DD|HH:mm"
+ */
+export function encodeSlotValue(serviceId: string, staffId: string, date: string, time: string): string {
+  return staffId ? `${serviceId}|${staffId}|${date}|${time}` : `${serviceId}|${date}|${time}`;
 }
 
-export function decodeSlotValue(value: string | undefined): { serviceId: string; date: string; time: string } | null {
-  const [serviceId, date, time] = (value ?? "").split("|");
-  if (!/^[a-z0-9_-]{1,40}$/.test(serviceId ?? "") || !/^\d{4}-\d{2}-\d{2}$/.test(date ?? "") || !/^\d{2}:\d{2}$/.test(time ?? "")) {
+/** อ่านได้ทั้งแบบ 3 ส่วน (การ์ดเก่าที่ค้างในแชท) และ 4 ส่วน */
+export function decodeSlotValue(
+  value: string | undefined,
+): { serviceId: string; staffId: string; date: string; time: string } | null {
+  const parts = (value ?? "").split("|");
+  const [serviceId, staffId, date, time] = parts.length === 3 ? [parts[0], "", parts[1], parts[2]] : parts;
+  if (
+    parts.length < 3 ||
+    parts.length > 4 ||
+    !ID.test(serviceId ?? "") ||
+    (staffId !== "" && !ID.test(staffId ?? "")) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(date ?? "") ||
+    !/^\d{2}:\d{2}$/.test(time ?? "")
+  ) {
     return null;
   }
-  return { serviceId, date, time };
+  return { serviceId, staffId, date, time };
 }
 
 /** มีเวลาว่างให้แสดงไหม (ถ้าไม่มี ส่งเป็นข้อความธรรมดา) */
@@ -73,8 +93,8 @@ export function buildSlotPickerFlex(message: string, data: SlotPickerData) {
             action: {
               type: "postback",
               label: time,
-              data: serializePostbackData(SELECT_SLOT_ACTION, encodeSlotValue(data.serviceId, day.date, time)),
-              displayText: `ขอจอง${data.service} ${dateLabel} เวลา ${time} น.`,
+              data: serializePostbackData(SELECT_SLOT_ACTION, encodeSlotValue(data.serviceId, data.staffId, day.date, time)),
+              displayText: `ขอจอง${data.service}${data.staffName ? ` กับ${data.staffName}` : ""} ${dateLabel} เวลา ${time} น.`,
             },
           })),
           // เติมช่องว่างให้ปุ่มแถวสุดท้ายกว้างเท่าแถวอื่น
@@ -99,7 +119,13 @@ export function buildSlotPickerFlex(message: string, data: SlotPickerData) {
         paddingAll: "md",
         contents: [
           { type: "text", text: "เลือกเวลานัด", color: "#FFFFFF", weight: "bold", size: "md" },
-          { type: "text", text: `${data.service} · ${data.durationMinutes} นาที`, color: "#FFFFFFCC", size: "xs" },
+          {
+            type: "text",
+            text: [data.service, `${data.durationMinutes} นาที`, data.staffName].filter(Boolean).join(" · "),
+            color: "#FFFFFFCC",
+            size: "xs",
+            wrap: true,
+          },
         ],
       },
       body: {

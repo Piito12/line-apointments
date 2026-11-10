@@ -2,8 +2,11 @@
 //
 // env ที่ต้องมีใน .env.local:
 //   GOOGLE_SERVICE_ACCOUNT_KEY  JSON ทั้งก้อนของ service account key (บรรทัดเดียว)
-//   GOOGLE_CALENDAR_ID          id ของ calendar ที่ share ให้ service account
-//                               ด้วยสิทธิ์ "Make changes to events"
+//   GOOGLE_CALENDAR_ID          calendar ของร้าน ที่ share ให้ service account ด้วยสิทธิ์ "Make changes to events"
+//                                 - ร้านไม่แยกผู้ให้บริการ (ไม่มีแท็บ staff): รับจองและเช็คเวลาว่างจาก calendar นี้
+//                                 - ร้านแยกผู้ให้บริการ: เป็น calendar รวม เก็บสำเนาการจองให้เจ้าของดูภาพรวม
+//                                   (ไม่ใช้เช็คเวลาว่าง) ไม่ใส่ก็ได้
+// calendar ของแต่ละคนอยู่ในแท็บ staff ของ Google Sheet (ดู config-schema.ts)
 
 import { createHash } from "node:crypto";
 
@@ -17,29 +20,22 @@ const EVENT_SOURCE = "clinic-appointment-agent";
 /** ยังไม่ได้ตั้งค่า Google (key หรือ calendar id) ใช้ class เดียวกับ google.ts เพื่อให้ tool เช็คที่เดียว */
 export { GoogleNotConfiguredError as CalendarNotConfiguredError };
 
-interface CalendarContext {
-  api: calendar_v3.Calendar;
-  calendarId: string;
+let cachedApi: calendar_v3.Calendar | undefined;
+
+function getApi(): calendar_v3.Calendar {
+  cachedApi ??= calendar({ version: "v3", auth: getServiceAccount() });
+  return cachedApi;
 }
 
-let cached: CalendarContext | undefined;
-
-export function getCalendarId(): string {
-  return getCalendar().calendarId;
+/** calendar ของร้าน (GOOGLE_CALENDAR_ID) ถ้าตั้งไว้ */
+export function shopCalendarId(): string | undefined {
+  return process.env.GOOGLE_CALENDAR_ID?.trim() || undefined;
 }
 
-function getCalendar(): CalendarContext {
-  if (cached) return cached;
-
-  const calendarId = process.env.GOOGLE_CALENDAR_ID;
-  const missing = [
-    ...(process.env.GOOGLE_SERVICE_ACCOUNT_KEY ? [] : ["GOOGLE_SERVICE_ACCOUNT_KEY"]),
-    ...(calendarId ? [] : ["GOOGLE_CALENDAR_ID"]),
-  ];
-  if (missing.length > 0 || !calendarId) throw new GoogleNotConfiguredError(missing);
-
-  cached = { api: calendar({ version: "v3", auth: getServiceAccount() }), calendarId };
-  return cached;
+export function requireShopCalendarId(): string {
+  const id = shopCalendarId();
+  if (!id) throw new GoogleNotConfiguredError(["GOOGLE_CALENDAR_ID"]);
+  return id;
 }
 
 function eventTimeToMs(t: calendar_v3.Schema$EventDateTime | undefined): number | null {
@@ -48,17 +44,31 @@ function eventTimeToMs(t: calendar_v3.Schema$EventDateTime | undefined): number 
   return null;
 }
 
+/** event การจองของลูกค้าคนนี้เอง: ไม่นับว่าชน เพื่อให้คำขอเดิมที่ถูกส่งซ้ำได้ผลเดิม */
+export interface OwnBooking {
+  eventId: string;
+  phone: string;
+}
+
+export interface BusyResult {
+  busy: BusyInterval[];
+  /** เจอ event การจองเดิมของลูกค้าคนนี้ (ตาม own) ใน calendar นี้ */
+  hasOwnBooking: boolean;
+}
+
 /**
  * ช่วงเวลาที่ไม่ว่างทั้งหมดใน calendar ระหว่าง timeMin ถึง timeMax
- * excludeEventId: ไม่นับ event นี้ (ใช้ตอนเช็คก่อนจอง เพื่อให้คำขอเดิมที่ถูกส่งซ้ำไม่ชนกับตัวเอง)
+ * own: event ที่ id และเบอร์ตรงกันจะไม่นับ (event id เดียวกันแต่เบอร์อื่น = คนอื่นจองไปแล้ว ยังนับว่าชน)
  */
 export async function listBusyIntervals(
+  calendarId: string,
   timeMin: number,
   timeMax: number,
-  excludeEventId?: string,
-): Promise<BusyInterval[]> {
-  const { api, calendarId } = getCalendar();
+  own?: OwnBooking,
+): Promise<BusyResult> {
+  const api = getApi();
   const busy: BusyInterval[] = [];
+  let hasOwnBooking = false;
   let pageToken: string | undefined;
 
   do {
@@ -74,7 +84,10 @@ export async function listBusyIntervals(
     for (const ev of res.data.items ?? []) {
       // event ที่ตั้งเป็น "ว่าง" (Free) ไม่นับว่าชน
       if (ev.status === "cancelled" || ev.transparency === "transparent") continue;
-      if (excludeEventId && ev.id === excludeEventId) continue;
+      if (own && ev.id === own.eventId && ev.extendedProperties?.private?.phone === own.phone) {
+        hasOwnBooking = true;
+        continue;
+      }
       const startMs = eventTimeToMs(ev.start);
       const endMs = eventTimeToMs(ev.end);
       if (startMs !== null && endMs !== null) busy.push({ startMs, endMs });
@@ -82,16 +95,21 @@ export async function listBusyIntervals(
     pageToken = res.data.nextPageToken ?? undefined;
   } while (pageToken);
 
-  return busy;
+  return { busy, hasOwnBooking };
+}
+
+function hashId(parts: (string | number)[]): string {
+  // Google ใช้ตัวอักษร base32hex (a-v, 0-9) ได้ hex จึงใช้ได้
+  return createHash("sha256").update(parts.join("|")).digest("hex").slice(0, 40);
 }
 
 /**
- * event id ที่คำนวณจาก calendar + เวลาเริ่ม (รับทีละ 1 คิว จึงมีได้แค่ 1 การจองต่อเวลาเริ่ม)
+ * event id ที่คำนวณจาก calendar + เวลาเริ่ม (1 calendar รับได้ 1 การจองต่อเวลาเริ่ม)
  * ใช้กันจองซ้ำเมื่อ LINE ส่ง event ซ้ำ หรือ eve retry step ของ tool
- * Google ใช้ตัวอักษร base32hex (a-v, 0-9) ได้ hex จึงใช้ได้
+ * ผู้ให้บริการคนละคนใช้คนละ calendar จึงรับคิวเวลาเดียวกันได้
  */
 export function bookingEventId(calendarId: string, startMs: number): string {
-  return createHash("sha256").update(`${calendarId}|${startMs}`).digest("hex").slice(0, 40);
+  return hashId([calendarId, startMs]);
 }
 
 export interface BookingInput {
@@ -99,6 +117,8 @@ export interface BookingInput {
   startMs: number;
   nickname: string;
   phone: string;
+  /** ผู้ให้บริการ (ไม่มี = ร้านไม่แยกผู้ให้บริการ) */
+  staff?: { id: string; name: string };
 }
 
 export type BookingResult =
@@ -110,19 +130,22 @@ function httpStatus(err: unknown): number | undefined {
   return e.status ?? (typeof e.code === "number" ? e.code : undefined);
 }
 
-/** สร้าง event การจองคิว ถ้าเวลานั้นถูกจองไปแล้วคืน conflict */
-export async function createBooking(input: BookingInput): Promise<BookingResult> {
-  const { api, calendarId } = getCalendar();
-  const { service } = input;
-  const endMs = input.startMs + service.minutes * 60_000;
-  const eventId = bookingEventId(calendarId, input.startMs);
+/** service account ไม่มีสิทธิ์เขียน calendar นี้ (403) หรือมองไม่เห็น/ถูกลบ (404) */
+export function isCalendarAccessError(err: unknown): boolean {
+  const status = httpStatus(err);
+  return status === 403 || status === 404;
+}
 
-  const requestBody: calendar_v3.Schema$Event = {
-    id: eventId,
+function eventBody(id: string, input: BookingInput): calendar_v3.Schema$Event {
+  const { service, staff } = input;
+  const endMs = input.startMs + service.minutes * 60_000;
+  return {
+    id,
     status: "confirmed",
-    summary: `${service.name} - ${input.nickname}`,
+    summary: [service.name, staff?.name, input.nickname].filter(Boolean).join(" - "),
     description: [
       `บริการ: ${service.name} (${service.minutes} นาที)`,
+      ...(staff ? [`ผู้ให้บริการ: ${staff.name}`] : []),
       `ชื่อเล่น: ${input.nickname}`,
       `เบอร์โทร: ${input.phone}`,
       "จองผ่าน LINE (AI agent)",
@@ -130,9 +153,21 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
     start: { dateTime: new Date(input.startMs).toISOString(), timeZone: "Asia/Bangkok" },
     end: { dateTime: new Date(endMs).toISOString(), timeZone: "Asia/Bangkok" },
     extendedProperties: {
-      private: { source: EVENT_SOURCE, service: service.id, phone: input.phone },
+      private: {
+        source: EVENT_SOURCE,
+        service: service.id,
+        phone: input.phone,
+        ...(staff ? { staff: staff.id } : {}),
+      },
     },
   };
+}
+
+/** สร้าง event การจองคิวใน calendar ที่ระบุ ถ้าเวลานั้นถูกจองไปแล้วคืน conflict */
+export async function createBooking(calendarId: string, input: BookingInput): Promise<BookingResult> {
+  const api = getApi();
+  const eventId = bookingEventId(calendarId, input.startMs);
+  const requestBody = eventBody(eventId, input);
 
   try {
     await api.events.insert({ calendarId, requestBody });
@@ -152,4 +187,20 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
     return { status: "booked", eventId, alreadyBooked: true };
   }
   return { status: "conflict" };
+}
+
+/**
+ * สำเนาการจองลง calendar รวมของร้าน (เฉพาะร้านที่แยกผู้ให้บริการ)
+ * id รวม staff ด้วย เพื่อให้คิวเวลาเดียวกันของคนละคนไม่ทับกัน ถ้ามีอยู่แล้ว (ส่งซ้ำ/เคยถูกลบ) เขียนทับ
+ */
+export async function copyBookingToCalendar(calendarId: string, input: BookingInput & { staff: { id: string; name: string } }) {
+  const api = getApi();
+  const eventId = hashId([calendarId, input.staff.id, input.startMs]);
+  const requestBody = eventBody(eventId, input);
+  try {
+    await api.events.insert({ calendarId, requestBody });
+  } catch (err) {
+    if (httpStatus(err) !== 409) throw err;
+    await api.events.update({ calendarId, eventId, requestBody });
+  }
 }

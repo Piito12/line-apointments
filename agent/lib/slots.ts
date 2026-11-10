@@ -183,3 +183,18 @@ export function validateBookingStart(
   }
   return null;
 }
+
+/**
+ * รวมเวลาว่างของหลายคน (ใช้กับ "ใครก็ได้"): เวลาไหนมีคนว่างอย่างน้อย 1 คนถือว่าว่าง
+ * ทุกผลลัพธ์ต้องมาจาก query ช่วงวันเดียวกัน วันจึงเรียงตรงกันทุกตัว
+ */
+export function mergeSlotResults(results: SlotResult[]): SlotResult {
+  const [first, ...rest] = results;
+  if (!first) throw new Error("mergeSlotResults: ไม่มีผลลัพธ์");
+  const days = first.days.map((day, i) => {
+    const times = new Set(day.times);
+    for (const r of rest) for (const t of r.days[i]?.times ?? []) times.add(t);
+    return { ...day, times: [...times].sort() };
+  });
+  return { ...first, days };
+}

@@ -10,7 +10,7 @@ import {
   buildBookedFlex,
   buildReviewFlex,
 } from "../lib/booking-flex";
-import { findService, getConfig } from "../lib/config";
+import { ANY_STAFF, findService, findStaff, getConfig } from "../lib/config";
 import {
   SELECT_SLOT_ACTION,
   buildSlotPickerFlex,
@@ -20,6 +20,12 @@ import {
   type SlotPickerData,
 } from "../lib/slot-flex";
 import { thaiWeekdayOf } from "../lib/slots";
+import {
+  SELECT_STAFF_ACTION,
+  buildStaffPickerFlex,
+  decodeStaffValue,
+  type StaffPickerData,
+} from "../lib/staff-flex";
 
 // LINE channel ผ่าน Vercel Chat SDK + community adapter `chat-adapter-line`
 //
@@ -35,6 +41,7 @@ import { thaiWeekdayOf } from "../lib/slots";
 // adapter จัดการให้แล้ว: ตรวจลายเซ็น, ตอบด้วย Reply API ก่อน (ฟรี)
 // แล้ว fallback เป็น Push API (นับ quota) เมื่อ reply token ใช้ไม่ได้, Flex message และ postback
 type PendingCard =
+  | { kind: "staff"; data: StaffPickerData }
   | { kind: "slots"; data: SlotPickerData }
   | { kind: "review"; data: BookingDetails }
   | { kind: "booked"; data: BookingDetails };
@@ -44,6 +51,9 @@ function cardFromToolResult(result: { toolName?: string; output?: unknown }): Pe
   const output = result.output as ({ ok?: boolean } & Record<string, unknown>) | undefined;
   if (!output?.ok) return null;
   switch (result.toolName) {
+    case "list_staff":
+      // แสดงปุ่มเลือกคนเฉพาะเมื่อ tool บอกว่าต้องให้ลูกค้าเลือก
+      return output.chooseStaff ? { kind: "staff", data: output as unknown as StaffPickerData } : null;
     case "get_available_slots":
       return Array.isArray(output.days) ? { kind: "slots", data: output as unknown as SlotPickerData } : null;
     case "review_booking":
@@ -57,6 +67,8 @@ function cardFromToolResult(result: { toolName?: string; output?: unknown }): Pe
 
 function buildCard(message: string, card: PendingCard) {
   switch (card.kind) {
+    case "staff":
+      return buildStaffPickerFlex(message, card.data);
     case "slots":
       return hasSelectableSlots(card.data) ? buildSlotPickerFlex(message, card.data) : null;
     case "review":
@@ -131,32 +143,61 @@ bot.onDirectMessage(async (thread, message) => {
   sessions.set(thread.id, await send(message.text, { thread }));
 });
 
-/** ชื่อบริการสำหรับข้อความที่ส่งเข้า agent แทนลูกค้า (ถ้าโหลด config ไม่ได้ ใช้ id แทน agent ยังเข้าใจได้) */
-async function serviceName(serviceId: string): Promise<string> {
+/**
+ * ชื่อบริการและผู้ให้บริการสำหรับข้อความที่ส่งเข้า agent แทนลูกค้า
+ * (ถ้าโหลด config ไม่ได้ ใช้ id แทน agent ยังเข้าใจได้)
+ */
+async function displayNames(serviceId: string, staffId: string): Promise<{ service: string; staff: string }> {
   try {
-    return findService(await getConfig(), serviceId)?.name ?? serviceId;
+    const config = await getConfig();
+    return {
+      service: findService(config, serviceId)?.name ?? serviceId,
+      staff: staffId && staffId !== ANY_STAFF ? (findStaff(config, staffId)?.name ?? staffId) : "",
+    };
   } catch {
-    return serviceId;
+    return { service: serviceId, staff: staffId === ANY_STAFF ? "" : staffId };
   }
 }
+
+/** ส่วนท้ายข้อความ: บอก id ของผู้ให้บริการให้ agent ใช้ต่อ (ลูกค้าเห็นแค่ displayText ของปุ่ม) */
+function staffTag(staffId: string): string {
+  return staffId ? ` (staff: ${staffId})` : "";
+}
+
+// ลูกค้ากดปุ่มเลือกผู้ให้บริการในการ์ดจาก list_staff: ส่งตัวเลือกเข้า agent แล้ว agent จะถามวันเวลาต่อ
+bot.onAction(SELECT_STAFF_ACTION, async (event) => {
+  const choice = decodeStaffValue(event.value);
+  if (!event.thread || !choice) return;
+  const names = await displayNames(choice.serviceId, choice.staffId);
+  const who = choice.staffId === ANY_STAFF ? " ใครก็ได้ที่ว่าง" : `กับ${names.staff}`;
+  const text = `ขอ${names.service}${who}${staffTag(choice.staffId)}`;
+  const thread = event.thread as Parameters<typeof send>[1]["thread"];
+  sessions.set(event.thread.id, await send(text, { thread }));
+});
 
 // ลูกค้ากดปุ่มเวลาใน Flex: ส่งเวลาที่เลือกเข้า agent เหมือนลูกค้าพิมพ์บอกเอง
 // agent จะขอชื่อเล่น/เบอร์ และให้ยืนยันก่อนจองตาม instructions
 bot.onAction(SELECT_SLOT_ACTION, async (event) => {
   const slot = decodeSlotValue(event.value);
   if (!event.thread || !slot) return;
-  const text = `ขอจอง${await serviceName(slot.serviceId)} ${formatThaiDate(slot.date, thaiWeekdayOf(slot.date))} (${slot.date}) เวลา ${slot.time} น.`;
+  const names = await displayNames(slot.serviceId, slot.staffId);
+  const text =
+    `ขอจอง${names.service}${names.staff ? ` กับ${names.staff}` : ""} ` +
+    `${formatThaiDate(slot.date, thaiWeekdayOf(slot.date))} (${slot.date}) เวลา ${slot.time} น.${staffTag(slot.staffId)}`;
   // ActionEvent.thread มี type กว้างกว่าที่ send() รับ แต่เป็น thread ของ adapter เดียวกัน
   const thread = event.thread as Parameters<typeof send>[1]["thread"];
   sessions.set(event.thread.id, await send(text, { thread }));
 });
 
 // ลูกค้ากด "ยืนยันการจอง" บนการ์ดสรุป: ส่งคำยืนยันพร้อมรายละเอียดเข้า agent
-// ใส่บริการ/วัน/เวลาในข้อความด้วย ถ้าลูกค้ากดปุ่มของการ์ดเก่า agent จะรู้ว่ายืนยันรายการไหน
+// ใส่บริการ/ผู้ให้บริการ/วัน/เวลาในข้อความด้วย ถ้าลูกค้ากดปุ่มของการ์ดเก่า agent จะรู้ว่ายืนยันรายการไหน
 bot.onAction(CONFIRM_BOOKING_ACTION, async (event) => {
   const slot = decodeSlotValue(event.value);
   if (!event.thread || !slot) return;
-  const text = `ยืนยันการจอง${await serviceName(slot.serviceId)} ${formatThaiDate(slot.date, thaiWeekdayOf(slot.date))} (${slot.date}) เวลา ${slot.time} น.`;
+  const names = await displayNames(slot.serviceId, slot.staffId);
+  const text =
+    `ยืนยันการจอง${names.service}${names.staff ? ` กับ${names.staff}` : ""} ` +
+    `${formatThaiDate(slot.date, thaiWeekdayOf(slot.date))} (${slot.date}) เวลา ${slot.time} น.${staffTag(slot.staffId)}`;
   const thread = event.thread as Parameters<typeof send>[1]["thread"];
   sessions.set(event.thread.id, await send(text, { thread }));
 });

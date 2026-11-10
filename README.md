@@ -33,7 +33,7 @@ npm install
 | `LINE_CHANNEL_SECRET` | ✅ | ตรวจลายเซ็น webhook ของ LINE |
 | `LINE_CHANNEL_ACCESS_TOKEN` | ✅ | ส่งข้อความตอบกลับลูกค้า |
 | `GOOGLE_SERVICE_ACCOUNT_KEY` | แนะนำ | JSON key ของ service account เป็นบรรทัดเดียว ใช้อ่านและจองคิวใน Google Calendar |
-| `GOOGLE_CALENDAR_ID` | แนะนำ | calendar ที่ใช้เก็บนัด |
+| `GOOGLE_CALENDAR_ID` | แนะนำ | calendar ที่ใช้เก็บนัด ถ้า[แยกหมอ/พนักงาน](#แยกหมอพนักงาน-แท็บ-staff) จะเป็น calendar รวมที่เก็บสำเนาทุกนัดให้เจ้าของดู (ไม่ใส่ก็ได้) |
 | `CONFIG_SHEET_ID` | ไม่บังคับ | Google Sheet ที่เก็บข้อมูลร้าน (ดู [ตั้งค่าข้อมูลร้าน](#ตั้งค่าข้อมูลร้าน-google-sheet)) ถ้าไม่ใส่ใช้ข้อมูลคลินิกสมมติ |
 | `ANTHROPIC_API_KEY` | ไม่บังคับ | ถ้ามี จะเรียก Claude โดยตรง |
 | `OPENAI_API_KEY` | ไม่บังคับ | ถ้ามี จะเรียก OpenAI โดยตรง |
@@ -188,7 +188,8 @@ GOOGLE_CALENDAR_ID=xxxxxxxx@group.calendar.google.com
 - event ใดๆ ในปฏิทินที่ไม่ได้ตั้งเป็น **Free** ถือว่าเวลานั้นไม่ว่าง (รับทีละ 1 คิว) จะบล็อกเวลาเอง เช่น พักเที่ยง ให้สร้าง event ธรรมดาในปฏิทินนี้ได้เลย
 - event ทั้งวัน (all-day) จะบล็อกทั้งวัน
 - เวลาทั้งหมดเป็นเวลาไทย (`Asia/Bangkok`) เวลาทำการและรายการบริการแก้ได้ใน [Google Sheet ข้อมูลร้าน](#ตั้งค่าข้อมูลร้าน-google-sheet)
-- กันจองซ้ำ: event id คำนวณจากเวลาเริ่ม ถ้ากดยืนยันซ้ำหรือ LINE ส่ง event ซ้ำจะไม่เกิดนัดซ้อน
+- กันจองซ้ำ: event id คำนวณจาก calendar + เวลาเริ่ม ถ้ากดยืนยันซ้ำหรือ LINE ส่ง event ซ้ำจะไม่เกิดนัดซ้อน
+- ถ้า[แยกหมอ/พนักงาน](#แยกหมอพนักงาน-แท็บ-staff) กติกาเหล่านี้ใช้กับ calendar ของแต่ละคน
 
 ### แก้ปัญหา Google Calendar
 
@@ -208,12 +209,13 @@ GOOGLE_CALENDAR_ID=xxxxxxxx@group.calendar.google.com
 
 1. ดาวน์โหลด [`templates/business-config-template.xlsx`](templates/business-config-template.xlsx)
 2. เปิด [Google Drive](https://drive.google.com/) → **New → File upload** → เลือกไฟล์ → เปิดไฟล์ → **File → Save as Google Sheets**
-3. แก้ข้อมูลในแท็บ `settings` และ `services` (แท็บ `วิธีใช้` อธิบายแต่ละช่อง) **ห้ามเปลี่ยนชื่อแท็บ คอลัมน์ `key` และหัวตาราง**
+3. แก้ข้อมูลในแท็บ `settings`, `services` และ `staff` ถ้าแยกหมอ/พนักงาน (แท็บ `วิธีใช้` อธิบายแต่ละช่อง) **ห้ามเปลี่ยนชื่อแท็บ คอลัมน์ `key` และหัวตาราง**
 
 | แท็บ | เก็บอะไร |
 |---|---|
 | `settings` | `business_name` (บังคับ), `business_type`, `contact`, `open_time`, `close_time`, `closed_weekdays` (เช่น `จันทร์, อังคาร`), `slot_step_minutes`, `booking_window_days`, `min_lead_minutes`, `extra_instructions` (กฎเฉพาะร้าน เช่น ห้ามให้คำแนะนำทางการแพทย์) ช่องตัวเลขหรือเวลาที่เว้นว่างจะใช้ค่าเริ่มต้น |
-| `services` | `id` (a-z 0-9 _ - ห้ามซ้ำ ลูกค้าไม่เห็น), `name` (ชื่อที่ลูกค้าเห็น), `minutes` (ระยะเวลาต่อคิว) |
+| `services` | `id` (a-z 0-9 _ - ห้ามซ้ำ ลูกค้าไม่เห็น), `name` (ชื่อที่ลูกค้าเห็น), `minutes` (ระยะเวลาต่อคิว), `choose_staff` (TRUE = ให้ลูกค้าเลือกหมอ/พนักงานเอง, FALSE = ระบบเลือกให้ เว้นว่าง = TRUE) |
+| `staff` | ไม่บังคับ ดู [แยกหมอ/พนักงาน](#แยกหมอพนักงาน-แท็บ-staff) |
 
 ### 2. เปิด Google Sheets API และแชร์ Sheet
 
@@ -236,10 +238,35 @@ local ใส่ใน `.env.local` แล้ว restart `npm run dev` บน Ver
 - ถ้าตั้ง `CONFIG_SHEET_ID` แต่อ่าน Sheet ไม่ได้ตั้งแต่ครั้งแรก agent จะบอกลูกค้าว่าระบบขัดข้องชั่วคราว (ไม่ใช้ข้อมูลคลินิกสมมติแทน เพราะจะเสนอบริการที่ร้านไม่มี)
 - persona และกฎกลาง (เช่น ห้ามแต่งเวลาว่าง) อยู่ใน `agent/instructions.md` ใช้ได้กับทุกธุรกิจ ส่วนข้อมูลร้านถูกสร้างจาก Sheet ทุก turn
 
+### แยกหมอ/พนักงาน (แท็บ `staff`)
+
+ไม่บังคับ ถ้าแท็บ `staff` มีแค่หัวตาราง ระบบรับจองลง `GOOGLE_CALENDAR_ID` ตัวเดียวแบบเดิม ถ้าใส่รายชื่อ ลูกค้าเลือกคนได้ใน LINE และการจองลง calendar ของคนนั้น
+
+| คอลัมน์ | ความหมาย |
+|---|---|
+| `id` | a-z 0-9 _ - ห้ามซ้ำ ห้ามใช้ `any` (ลูกค้าไม่เห็น) |
+| `name` | ชื่อที่ลูกค้าเห็น เช่น หมอเอ |
+| `calendar_id` | Google Calendar ของคนนั้น (Google Calendar → Settings → Integrate calendar → Calendar ID) แต่ละคนต้องมี calendar ของตัวเอง |
+| `services` | id บริการคั่นด้วยจุลภาค เช่น `botox, filler` หรือ `*` = ทำได้ทุกบริการ ทุกบริการต้องมีอย่างน้อย 1 คน |
+| `active` | `FALSE` = พักรับจองชั่วคราว เว้นว่าง = `TRUE` |
+
+ขั้นตอน:
+
+1. สร้าง calendar ให้แต่ละคน แล้วแชร์ให้ `client_email` ของ service account สิทธิ์ **Make changes to events** (ถ้าลืมแชร์ คนนั้นจะไม่ถูกเสนอให้จอง และมี log `[staff] read calendar of "<id>" failed`)
+2. ใส่รายชื่อในแท็บ `staff` และตั้ง `choose_staff` ในแท็บ `services`
+
+พฤติกรรม:
+
+- **ลูกค้าเลือกคน**: บริการที่ `choose_staff` = TRUE และมีคนทำได้มากกว่า 1 คน จะมีการ์ดปุ่มให้เลือกคน หรือ "ใครก็ได้ที่ว่าง" ถ้าเป็น FALSE หรือมีคนเดียว ระบบข้ามขั้นนี้
+- **ใครก็ได้**: เสนอเวลาที่มีอย่างน้อย 1 คนว่าง ตอนจองเลือกคนที่ว่างและมีคิวน้อยสุดในวันนั้น (เท่ากันใช้ลำดับในแท็บ) ถ้าคนนั้นถูกจองตัดหน้า ระบบสลับไปคนอื่นที่ว่างให้เอง
+- **เวลาทำงาน**: ทุกคนใช้เวลาเปิด-ปิดของร้าน ถ้าใครลาหรือไม่เข้างาน ให้ลง event ใน calendar ของคนนั้น ช่วงนั้นจะไม่เปิดให้จอง
+- **calendar รวม**: ถ้าตั้ง `GOOGLE_CALENDAR_ID` ไว้ ทุกการจองจะถูกคัดลอกไปที่ calendar นี้ด้วย (ชื่อ event มีชื่อผู้ให้บริการ) ใช้ดูภาพรวมเท่านั้น ระบบเช็คเวลาว่างจาก calendar ของแต่ละคน **ยกเลิกหรือเลื่อนนัดต้องแก้ใน calendar ของคนนั้น** การแก้ใน calendar รวมไม่ sync กลับ
+
 | อาการ | สาเหตุที่เป็นไปได้ |
 |---|---|
 | log `โหลดข้อมูลร้านจาก Google Sheet ไม่สำเร็จ` + 403 | ยังไม่ได้ Enable Google Sheets API หรือยังไม่ได้แชร์ Sheet ให้ `client_email` |
 | log 404 / `Unable to parse range` | `CONFIG_SHEET_ID` ผิด หรือเปลี่ยนชื่อแท็บ `settings` / `services` |
+| log 400 `must not be an Office file` | `CONFIG_SHEET_ID` เป็นไฟล์ .xlsx ที่ยังไม่ได้แปลง เปิดไฟล์แล้วกด **File → Save as Google Sheets** แล้วใช้ ID ของไฟล์ใหม่ |
 | log `ข้อมูลร้านใน Sheet ไม่ถูกต้อง` | ดูรายการปัญหาและเลขแถวใน log แล้วแก้ใน Sheet |
 | แก้ Sheet แล้วยังเห็นค่าเก่า | รอไม่เกิน 1 นาที หรือ restart server ถ้า agent ยังตอบค่าเก่าในแชทเดิม ให้พิมพ์ `เริ่มใหม่` ใน LINE |
 
@@ -256,6 +283,7 @@ npx vercel env add LINE_CHANNEL_SECRET production
 npx vercel env add LINE_CHANNEL_ACCESS_TOKEN production
 npx vercel env add GOOGLE_SERVICE_ACCOUNT_KEY production
 npx vercel env add GOOGLE_CALENDAR_ID production
+npx vercel env add CONFIG_SHEET_ID production   # ไม่บังคับ ถ้าใช้ข้อมูลร้านจาก Google Sheet
 npx eve deploy --non-interactive --yes
 ```
 
@@ -279,14 +307,19 @@ agent/
 │   ├── eve.ts                    # HTTP session API + TUI ของ eve
 │   └── line.ts                   # LINE channel ผ่าน Chat SDK → webhook /eve/v1/line
 ├── tools/
-│   ├── get_available_slots.ts    # ดูเวลาว่างจาก Google Calendar
+│   ├── list_staff.ts             # รายชื่อหมอ/พนักงานที่ทำบริการนั้นได้ (การ์ดเลือกคน)
+│   ├── get_available_slots.ts    # ดูเวลาว่างจาก Google Calendar (ของคนที่เลือก หรือรวมทุกคน)
+│   ├── review_booking.ts         # ตรวจรายละเอียดก่อนยืนยัน (ยังไม่จอง)
 │   └── book_appointment.ts       # จองคิวลง Google Calendar
 └── lib/
     ├── config.ts                 # โหลดข้อมูลร้านจาก Google Sheet (cache 1 นาที) หรือใช้ค่าเริ่มต้น
     ├── config-schema.ts          # โครงสร้างข้อมูลร้าน ค่าเริ่มต้น และตัวตรวจข้อมูลจาก Sheet
     ├── google.ts                 # Service Account ที่ใช้ร่วมกันระหว่าง Calendar และ Sheets
     ├── slots.ts                  # คำนวณเวลาว่าง (ไม่เรียก network)
-    └── calendar.ts               # Google Calendar client (Service Account)
+    ├── calendar.ts               # Google Calendar client (Service Account)
+    ├── staff.ts                  # เลือกหมอ/พนักงานและ calendar ที่ใช้จอง
+    ├── booking.ts                # ตรวจการจองที่ใช้ร่วมกันระหว่าง review และ book
+    └── *-flex.ts                 # การ์ด LINE: เลือกคน / เลือกเวลา / สรุปการจอง
 templates/
 └── business-config-template.xlsx # template ข้อมูลร้าน สำหรับ upload เป็น Google Sheet
 ```

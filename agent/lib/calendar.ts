@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 import { calendar, type calendar_v3 } from "@googleapis/calendar";
 
 import { GoogleNotConfiguredError, getServiceAccount } from "./google";
-import { localToMs, type BusyInterval } from "./slots";
+import { addDays, localToMs, type BusyInterval } from "./slots";
 
 const EVENT_SOURCE = "clinic-appointment-agent";
 
@@ -96,6 +96,41 @@ export async function listBusyIntervals(
   } while (pageToken);
 
   return { busy, hasOwnBooking };
+}
+
+/** calendar วันหยุดของ Google ปน "วันสำคัญ" (เช่น วาเลนไทน์ ตรุษจีน) ที่ไม่ใช่วันหยุดมาด้วย ดูได้จาก description */
+const OBSERVANCE = /วันสำคัญ|observance/i;
+
+/**
+ * วันหยุด (event ทั้งวัน) ใน calendar ระหว่าง fromDate ถึง toDate (YYYY-MM-DD รวมทั้งสองวัน) → วันที่ → ชื่อวันหยุด
+ * calendar วันหยุดของ Google จะตัดวันสำคัญออก calendar ที่ร้านสร้างเองนับทุก event
+ */
+export async function listHolidayDates(calendarId: string, fromDate: string, toDate: string): Promise<Map<string, string>> {
+  const api = getApi();
+  const isGoogleHolidays = calendarId.endsWith("#holiday@group.v.calendar.google.com");
+  const out = new Map<string, string>();
+  let pageToken: string | undefined;
+  do {
+    const res = await api.events.list({
+      calendarId,
+      timeMin: new Date(localToMs(fromDate, "00:00")).toISOString(),
+      timeMax: new Date(localToMs(addDays(toDate, 1), "00:00")).toISOString(),
+      singleEvents: true,
+      maxResults: 2500,
+      pageToken,
+    });
+    for (const ev of res.data.items ?? []) {
+      if (ev.status === "cancelled" || !ev.start?.date || !ev.end?.date) continue; // นับเฉพาะ event ทั้งวัน
+      if (isGoogleHolidays && OBSERVANCE.test(ev.description ?? "")) continue;
+      const name = (ev.summary ?? "").replace(/​/g, "").trim() || "วันหยุด";
+      // end.date ของ event ทั้งวันเป็นวันถัดจากวันสุดท้าย (exclusive)
+      for (let d = ev.start.date; d < ev.end.date; d = addDays(d, 1)) {
+        if (!out.has(d)) out.set(d, name);
+      }
+    }
+    pageToken = res.data.nextPageToken ?? undefined;
+  } while (pageToken);
+  return out;
 }
 
 function hashId(parts: (string | number)[]): string {

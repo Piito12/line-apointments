@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { CalendarNotConfiguredError, bookingEventId } from "./calendar";
 import { ANY_STAFF, ConfigUnavailableError, findService, type BusinessConfig, type Service } from "./config";
+import { getDayCalendar } from "./holidays";
 import {
   DATE_PATTERN,
   TIME_PATTERN,
@@ -89,7 +90,7 @@ export async function checkBooking(
     return { ok: false, reason: "invalid_phone", message: "เบอร์โทรไม่ถูกต้อง ต้องเป็นเบอร์ไทย 9–10 หลักขึ้นต้นด้วย 0" };
   }
 
-  const invalid = validateBookingStart(config.rules, service, req.date, req.time, Date.now());
+  const invalid = validateBookingStart(config.rules, service, req.date, req.time, Date.now(), await getDayCalendar(config));
   if (invalid) return { ok: false, reason: "invalid_time", message: invalid };
 
   const pick = pickProviders(config, service, req.staff);

@@ -56,7 +56,27 @@ export interface BusinessConfig {
   staff: Staff[];
   /** คำสั่งเพิ่มเติมสำหรับ agent เฉพาะธุรกิจ เช่น ข้อห้าม (ต่อท้าย instructions หลัก) */
   extraInstructions: string;
+  /** calendar วันหยุดที่ร้านปิดตาม (null = ไม่ปิดตามวันหยุด) */
+  holidayCalendarId: string | null;
+  /** วันที่ร้านตั้งเองในแท็บ closures: ปิดพิเศษ / เปิดทั้งที่เป็นวันหยุด / เปิดเวลาพิเศษ */
+  dateOverrides: DateOverride[];
 }
+
+/**
+ * ข้อยกเว้นรายวันจากแท็บ closures (มีสิทธิ์เหนือวันหยุดและวันปิดประจำสัปดาห์)
+ *   open = false → ปิดทั้งวัน
+ *   open = true  → เปิด ใช้เวลา openTime–closeTime ถ้าใส่ ไม่ใส่ = เวลาทำการปกติ (ใช้ทำ "ปิดครึ่งวัน" ได้)
+ */
+export interface DateOverride {
+  date: string;
+  open: boolean;
+  openTime?: string;
+  closeTime?: string;
+  note: string;
+}
+
+/** calendar วันหยุดนักขัตฤกษ์ไทยของ Google (ค่าเริ่มต้นของ settings.holiday_calendar) */
+export const DEFAULT_HOLIDAY_CALENDAR = "th.th#holiday@group.v.calendar.google.com";
 
 /** ใช้เมื่อยังไม่ได้ตั้ง CONFIG_SHEET_ID: ข้อมูลคลินิกสมมติของ PoC เดิม */
 export const DEFAULT_CONFIG: BusinessConfig = {
@@ -79,6 +99,8 @@ export const DEFAULT_CONFIG: BusinessConfig = {
     { id: "filler", name: "ฟิลเลอร์", minutes: 45, chooseStaff: true },
   ],
   staff: [],
+  holidayCalendarId: DEFAULT_HOLIDAY_CALENDAR,
+  dateOverrides: [],
   extraInstructions: [
     "- ไม่วินิจฉัยหรือให้คำแนะนำทางการแพทย์ ไม่รับประกันผลลัพธ์ของการรักษา คำถามเรื่องอาการ ผลข้างเคียง หรือความเหมาะสมของทรีตเมนต์ ให้แนะนำนัดปรึกษาแพทย์",
     "- ห้ามขอประวัติการรักษาหรือข้อมูลสุขภาพ",
@@ -196,8 +218,11 @@ const SETTING_KEYS: Record<string, string> = {
   minLeadMinutes: "min_lead_minutes",
 };
 
-/** ชื่อแท็บใน Sheet (ต้องตรงกับ template) staff ไม่บังคับ */
-export const SHEET_TABS = { settings: "settings", services: "services", staff: "staff" } as const;
+/** ชื่อแท็บใน Sheet (ต้องตรงกับ template) staff และ closures ไม่บังคับ */
+export const SHEET_TABS = { settings: "settings", services: "services", staff: "staff", closures: "closures" } as const;
+
+/** ค่าใน settings.holiday_calendar ที่แปลว่าไม่ปิดตามวันหยุด */
+const NO_HOLIDAY_WORDS = new Set(["none", "no", "off", "false", "ไม่ใช้", "ไม่ปิด"]);
 
 type Rows = string[][];
 
@@ -301,13 +326,103 @@ export function parseStaff(staffRows: Rows, serviceIds: string[]): { staff: Staf
 }
 
 /**
+ * วันที่จาก Sheet: 2026-12-05 หรือ 5/12/2026 (วัน/เดือน/ปี ปี พ.ศ. ก็ได้) → "2026-12-05" ไม่ถูกต้อง → null
+ * (Sheet ส่งค่าตามรูปแบบที่แสดง จึงต้องรับทั้งแบบ ISO และแบบ locale ไทย)
+ */
+export function parseSheetDate(raw: string): string | null {
+  const s = raw.trim();
+  let y: number, m: number, d: number;
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);
+  const dmy = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(s);
+  if (iso) [y, m, d] = [Number(iso[1]), Number(iso[2]), Number(iso[3])];
+  else if (dmy) [d, m, y] = [Number(dmy[1]), Number(dmy[2]), Number(dmy[3])];
+  else return null;
+  if (y > 2400) y -= 543;
+  const date = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const check = new Date(Date.UTC(y, m - 1, d));
+  return check.getUTCFullYear() === y && check.getUTCMonth() === m - 1 && check.getUTCDate() === d ? date : null;
+}
+
+const OPEN_WORDS = new Set(["open", "เปิด"]);
+const CLOSED_WORDS = new Set(["closed", "close", "ปิด"]);
+
+/**
+ * แท็บ closures: หัวตาราง date | type | open_time | close_time | note
+ *   type: closed/ปิด = ปิดทั้งวัน, open/เปิด = เปิด (แม้เป็นวันหยุดหรือวันปิดประจำสัปดาห์)
+ *   open_time/close_time: ใช้กับ open เท่านั้น ใส่ทั้งคู่ = เวลาทำการพิเศษวันนั้น เว้นว่าง = เวลาปกติ
+ * ไม่มีแท็บ หรือมีแค่หัวตาราง → [] (ใช้วันหยุดจาก calendar และวันปิดประจำสัปดาห์ตามปกติ)
+ */
+export function parseClosures(rows: Rows): { overrides: DateOverride[]; problems: string[] } {
+  const problems: string[] = [];
+  const overrides: DateOverride[] = [];
+  const col = headerIndex(rows);
+  const [dateCol, typeCol, openCol, closeCol, noteCol] = ["date", "type", "open_time", "close_time", "note"].map(col);
+  const data = dataRows(rows).filter(({ row }) => [dateCol, typeCol].some((c) => c >= 0 && (row[c] ?? "").trim() !== ""));
+  if (data.length === 0) return { overrides, problems };
+  if (dateCol < 0 || typeCol < 0) {
+    problems.push(`แท็บ ${SHEET_TABS.closures} ต้องมีหัวคอลัมน์ date, type ในแถวแรก`);
+    return { overrides, problems };
+  }
+
+  const seen = new Set<string>();
+  for (const { row, sheetRow } of data) {
+    const where = `${SHEET_TABS.closures} แถว ${sheetRow}`;
+    const cell = (c: number) => (c >= 0 ? (row[c] ?? "") : "").trim();
+    const rowProblems: string[] = [];
+
+    const date = parseSheetDate(cell(dateCol));
+    if (!date) rowProblems.push(`(date) "${cell(dateCol)}" ไม่ใช่วันที่ ใช้รูปแบบ 2026-12-31`);
+    else if (seen.has(date)) rowProblems.push(`(date) ${date} ซ้ำกับแถวก่อนหน้า`);
+
+    const type = cell(typeCol).toLowerCase();
+    const open = OPEN_WORDS.has(type) ? true : CLOSED_WORDS.has(type) ? false : null;
+    if (open === null) rowProblems.push(`(type) ต้องเป็น closed (ปิด) หรือ open (เปิด) (ได้ "${cell(typeCol)}")`);
+
+    const rawOpen = cell(openCol);
+    const rawClose = cell(closeCol);
+    const openTime = rawOpen ? normalizeTime(rawOpen) : undefined;
+    const closeTime = rawClose ? normalizeTime(rawClose) : undefined;
+    if (openTime || closeTime) {
+      if (open === false) {
+        rowProblems.push("(open_time/close_time) ใช้กับ type open เท่านั้น ถ้าจะปิดบางช่วง ให้ตั้ง open พร้อมเวลาที่เปิด");
+      } else if (!openTime || !closeTime) {
+        rowProblems.push("(open_time/close_time) ต้องใส่ทั้งคู่ หรือเว้นว่างทั้งคู่ (= เวลาทำการปกติ)");
+      } else if (!TIME.test(openTime) || !TIME.test(closeTime)) {
+        rowProblems.push("(open_time/close_time) ต้องเป็นเวลา HH:mm เช่น 10:00");
+      } else if (openTime >= closeTime) {
+        rowProblems.push("(close_time) ต้องหลัง open_time");
+      }
+    }
+
+    if (date) seen.add(date);
+    if (rowProblems.length > 0) {
+      problems.push(...rowProblems.map((p) => `${where} ${p}`));
+      continue;
+    }
+    overrides.push({
+      date: date!,
+      open: open!,
+      ...(open && openTime && closeTime ? { openTime, closeTime } : {}),
+      note: cell(noteCol),
+    });
+  }
+  return { overrides, problems };
+}
+
+/**
  * แปลงค่าจากแท็บต่างๆ เป็น BusinessConfig
  *   settings: แถวแรกเป็นหัวตาราง จากนั้นคอลัมน์ A = key, B = value (คอลัมน์อื่นเป็นคำอธิบาย ไม่อ่าน)
  *   services: แถวแรกเป็นหัวตาราง id | name | minutes | choose_staff (อ่านตามชื่อหัวคอลัมน์ ลำดับสลับได้)
  *   staff:    ไม่บังคับ ดู parseStaff
+ *   closures: ไม่บังคับ ดู parseClosures
  * ค่าที่เว้นว่างใน settings ใช้ค่าเริ่มต้นของ DEFAULT_CONFIG.rules
  */
-export function parseSheetConfig(settingsRows: Rows, serviceRows: Rows, staffRows: Rows = []): BusinessConfig {
+export function parseSheetConfig(
+  settingsRows: Rows,
+  serviceRows: Rows,
+  staffRows: Rows = [],
+  closureRows: Rows = [],
+): BusinessConfig {
   const problems: string[] = [];
   const settings = new Map<string, string>();
   for (const row of settingsRows.slice(1)) {
@@ -380,6 +495,17 @@ export function parseSheetConfig(settingsRows: Rows, serviceRows: Rows, staffRow
   const staff = parseStaff(staffRows, services.map((s) => s.id).filter((id) => ID_PATTERN.test(id)));
   problems.push(...staff.problems);
 
+  const closures = parseClosures(closureRows);
+  problems.push(...closures.problems);
+
+  // เว้นว่าง = วันหยุดราชการไทย, none = ไม่ปิดตามวันหยุด, อื่นๆ = calendar ID ที่ร้านกำหนดเอง
+  const rawHoliday = get("holiday_calendar");
+  const holidayCalendarId = !rawHoliday
+    ? DEFAULT_HOLIDAY_CALENDAR
+    : NO_HOLIDAY_WORDS.has(rawHoliday.toLowerCase())
+      ? null
+      : rawHoliday;
+
   if (problems.length > 0 || !parsed.success) throw new ConfigInvalidError(problems);
-  return { ...parsed.data, staff: staff.staff };
+  return { ...parsed.data, staff: staff.staff, holidayCalendarId, dateOverrides: closures.overrides };
 }

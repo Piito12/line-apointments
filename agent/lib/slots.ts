@@ -2,7 +2,7 @@
 // ไฟล์นี้ไม่เรียก network เลย จึงทดสอบได้โดยไม่ต้องมี credential ของ Google
 // วันที่และเวลาทั้งหมดในไฟล์นี้เป็นเวลาไทย (Asia/Bangkok) ในรูปแบบ "YYYY-MM-DD" และ "HH:mm"
 
-import type { BookingRules } from "./config-schema";
+import type { BookingRules, DateOverride } from "./config-schema";
 
 /** Asia/Bangkok ไม่มี daylight saving ใช้ offset คงที่ได้ */
 export const UTC_OFFSET = "+07:00";
@@ -71,6 +71,43 @@ export function dateRangeToMs(startDate: string, endDate: string): { timeMin: nu
   return { timeMin: localToMs(startDate, "00:00"), timeMax: localToMs(addDays(endDate, 1), "00:00") };
 }
 
+/** ข้อมูลวันปิด/เปิดพิเศษที่ไม่ได้อยู่ใน BookingRules (วันหยุดดึงจาก calendar ตอนรัน) */
+export interface DayCalendar {
+  /** ข้อยกเว้นจากแท็บ closures ตามวันที่ */
+  overrides: ReadonlyMap<string, DateOverride>;
+  /** วันหยุดที่ร้านปิด: วันที่ → ชื่อวันหยุด */
+  holidays: ReadonlyMap<string, string>;
+}
+
+export const EMPTY_DAY_CALENDAR: DayCalendar = { overrides: new Map(), holidays: new Map() };
+
+export type DayStatus =
+  | { open: true; openTime: string; closeTime: string; /** เวลาทำการพิเศษ (ต่างจากปกติ) */ special: boolean; note: string }
+  | { open: false; reason: string };
+
+/**
+ * วันนี้ร้านเปิดไหม เวลาไหน — กฎแรกที่ตรงชนะ:
+ *   1. แท็บ closures = open  → เปิด (เวลาพิเศษถ้าใส่)
+ *   2. แท็บ closures = closed → ปิด
+ *   3. วันหยุดจาก holiday calendar → ปิด
+ *   4. closed_weekdays → ปิด
+ *   5. นอกนั้นเปิดตามเวลาปกติ
+ */
+export function dayStatus(rules: BookingRules, date: string, cal: DayCalendar = EMPTY_DAY_CALENDAR): DayStatus {
+  const normal = { open: true as const, openTime: rules.openTime, closeTime: rules.closeTime, special: false, note: "" };
+  const override = cal.overrides.get(date);
+  if (override?.open) {
+    if (!override.openTime || !override.closeTime) return { ...normal, note: override.note };
+    const special = override.openTime !== rules.openTime || override.closeTime !== rules.closeTime;
+    return { open: true, openTime: override.openTime, closeTime: override.closeTime, special, note: override.note };
+  }
+  if (override) return { open: false, reason: `ร้านปิดพิเศษ${override.note ? ` (${override.note})` : ""}` };
+  const holiday = cal.holidays.get(date);
+  if (holiday) return { open: false, reason: `ร้านปิดวันหยุดนักขัตฤกษ์ (${holiday})` };
+  if (rules.closedWeekdays.includes(weekdayOf(date))) return { open: false, reason: `ร้านปิดทุกวัน${thaiWeekdayOf(date)}` };
+  return normal;
+}
+
 function overlapsBusy(startMs: number, endMs: number, busy: readonly BusyInterval[]): boolean {
   return busy.some((b) => startMs < b.endMs && b.startMs < endMs);
 }
@@ -79,6 +116,15 @@ export interface AvailableDay {
   date: string;
   weekday: string;
   times: string[];
+  /** มีเฉพาะวันที่เปิดเวลาพิเศษ เช่น "10:00–14:00" */
+  specialHours?: string;
+}
+
+export interface ClosedDay {
+  date: string;
+  weekday: string;
+  /** เหตุผลที่ปิด เช่น ร้านปิดวันหยุดนักขัตฤกษ์ (วันพ่อแห่งชาติ) */
+  reason: string;
 }
 
 export interface SlotQuery {
@@ -93,6 +139,8 @@ export interface SlotQuery {
   timeFrom?: string;
   /** เฉพาะคิวที่เริ่มก่อนเวลานี้ */
   timeTo?: string;
+  /** วันหยุดและข้อยกเว้นรายวัน ไม่ใส่ = ใช้แค่ closed_weekdays */
+  calendar?: DayCalendar;
 }
 
 export interface SlotResult {
@@ -100,7 +148,7 @@ export interface SlotResult {
   searchedFrom: string | null;
   searchedTo: string | null;
   days: AvailableDay[];
-  closedDates: string[];
+  closedDays: ClosedDay[];
   notes: string[];
 }
 
@@ -122,21 +170,22 @@ export function computeAvailableSlots(q: SlotQuery): SlotResult {
     notes.push(`จองล่วงหน้าได้ไม่เกิน ${rules.bookingWindowDays} วัน ค้นถึง ${lastDate}`);
   }
   if (from > to) {
-    return { searchedFrom: null, searchedTo: null, days: [], closedDates: [], notes: [...notes, "ช่วงวันที่ที่ขออยู่นอกช่วงที่จองได้"] };
+    return { searchedFrom: null, searchedTo: null, days: [], closedDays: [], notes: [...notes, "ช่วงวันที่ที่ขออยู่นอกช่วงที่จองได้"] };
   }
 
-  const open = minutesOf(rules.openTime);
-  const close = minutesOf(rules.closeTime);
   const earliestStart = q.now + rules.minLeadMinutes * MINUTE;
   const days: AvailableDay[] = [];
-  const closedDates: string[] = [];
+  const closedDays: ClosedDay[] = [];
 
   for (let date = from; date <= to; date = addDays(date, 1)) {
     const weekday = weekdayOf(date);
-    if (rules.closedWeekdays.includes(weekday)) {
-      closedDates.push(date);
+    const status = dayStatus(rules, date, q.calendar);
+    if (!status.open) {
+      closedDays.push({ date, weekday: THAI_WEEKDAYS[weekday], reason: status.reason });
       continue;
     }
+    const open = minutesOf(status.openTime);
+    const close = minutesOf(status.closeTime);
     const times: string[] = [];
     for (let m = open; m + duration <= close; m += rules.slotStepMinutes) {
       const time = timeOf(m);
@@ -147,10 +196,15 @@ export function computeAvailableSlots(q: SlotQuery): SlotResult {
       if (overlapsBusy(startMs, startMs + duration * MINUTE, q.busy)) continue;
       times.push(time);
     }
-    days.push({ date, weekday: THAI_WEEKDAYS[weekday], times });
+    days.push({
+      date,
+      weekday: THAI_WEEKDAYS[weekday],
+      times,
+      ...(status.special ? { specialHours: `${status.openTime}–${status.closeTime}${status.note ? ` (${status.note})` : ""}` } : {}),
+    });
   }
 
-  return { searchedFrom: from, searchedTo: to, days, closedDates, notes };
+  return { searchedFrom: from, searchedTo: to, days, closedDays, notes };
 }
 
 /** ตรวจว่าเวลาเริ่มที่ขอจองเป็นไปตามกฎของร้านไหม คืนข้อความเหตุผลถ้าไม่ผ่าน */
@@ -160,23 +214,25 @@ export function validateBookingStart(
   date: string,
   time: string,
   now: number,
+  calendar?: DayCalendar,
 ): string | null {
   if (!isValidDate(date)) return `วันที่ ${date} ไม่ถูกต้อง`;
   if (!TIME_PATTERN.test(time)) return `เวลา ${time} ไม่ถูกต้อง`;
 
   const { firstDate, lastDate } = bookingWindow(rules, now);
   if (date < firstDate || date > lastDate) return `จองได้เฉพาะวันที่ ${firstDate} ถึง ${lastDate}`;
-  if (rules.closedWeekdays.includes(weekdayOf(date))) return `วัน${THAI_WEEKDAYS[weekdayOf(date)]}ร้านปิด`;
+  const status = dayStatus(rules, date, calendar);
+  if (!status.open) return `วันที่ ${date} ${status.reason}`;
 
   const start = minutesOf(time);
-  const open = minutesOf(rules.openTime);
+  const open = minutesOf(status.openTime);
   const duration = service.minutes;
-  if (start < open || start + duration > minutesOf(rules.closeTime)) {
-    return `คิว ${service.name} (${duration} นาที) ต้องอยู่ในเวลาทำการ ${rules.openTime}–${rules.closeTime}`;
+  if (start < open || start + duration > minutesOf(status.closeTime)) {
+    return `คิว ${service.name} (${duration} นาที) ต้องอยู่ในเวลาทำการ${status.special ? "พิเศษของวันนั้น" : ""} ${status.openTime}–${status.closeTime}`;
   }
   if ((start - open) % rules.slotStepMinutes !== 0) {
     const example = timeOf(open + rules.slotStepMinutes);
-    return `เวลาเริ่มต้องลงทุกๆ ${rules.slotStepMinutes} นาที เช่น ${rules.openTime}, ${example}`;
+    return `เวลาเริ่มต้องลงทุกๆ ${rules.slotStepMinutes} นาที เช่น ${status.openTime}, ${example}`;
   }
   if (localToMs(date, time) < now + rules.minLeadMinutes * MINUTE) {
     return `ต้องจองล่วงหน้าอย่างน้อย ${rules.minLeadMinutes} นาที`;

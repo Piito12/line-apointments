@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { toolErrorResult, unknownServiceResult } from "../lib/booking";
 import { ANY_STAFF, findService, getConfig } from "../lib/config";
+import { getDayCalendar } from "../lib/holidays";
 import {
   DATE_PATTERN,
   TIME_PATTERN,
@@ -18,6 +19,7 @@ export default defineTool({
   description:
     "ดูเวลาว่างของร้านสำหรับบริการที่ลูกค้าต้องการ ในช่วงวันที่ที่ระบุ (เวลาไทย) " +
     "คืนเวลาเริ่มของคิวที่ว่างแยกตามวัน ใช้ทุกครั้งก่อนเสนอเวลาให้ลูกค้า ห้ามเดาเวลาว่างเอง " +
+    "วันที่ร้านปิด (วันหยุด/ปิดพิเศษ/วันปิดประจำ) อยู่ใน closedDays พร้อมเหตุผล วันที่เปิดเวลาพิเศษมี specialHours " +
     `ถ้าร้านแยกผู้ให้บริการ ใส่ staff เป็น id ของคนที่ลูกค้าเลือก หรือ "${ANY_STAFF}" = เวลาที่มีใครก็ได้ว่าง`,
   inputSchema: z.object({
     // รายการบริการมาจาก config ที่เปลี่ยนได้ระหว่างรัน จึงรับเป็น string แล้วตรวจใน execute
@@ -73,7 +75,8 @@ export default defineTool({
         staffName: single?.name ?? "",
         bookingWindow: bookingWindow(rules, now),
       };
-      const query = { rules, durationMinutes: service.minutes, startDate, endDate: end, now, timeFrom, timeTo };
+      const calendar = await getDayCalendar(config);
+      const query = { rules, durationMinutes: service.minutes, startDate, endDate: end, now, timeFrom, timeTo, calendar };
 
       // รอบแรกไม่มีข้อมูล calendar: ใช้หาช่วงวันที่ที่จองได้จริง เพื่อดึง event เท่าที่จำเป็น
       const window = computeAvailableSlots({ ...query, busy: [] });

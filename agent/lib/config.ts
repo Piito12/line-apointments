@@ -45,19 +45,31 @@ function httpStatus(err: unknown): number | undefined {
   return e.response?.status ?? e.status;
 }
 
+async function sheetTitles(sheetId: string): Promise<Set<string>> {
+  const res = await getServiceAccount().request<{ sheets?: { properties?: { title?: string } }[] }>({
+    url: `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(sheetId)}?fields=sheets.properties.title`,
+  });
+  return new Set((res.data.sheets ?? []).map((s) => s.properties?.title ?? ""));
+}
+
 async function fetchSheetConfig(sheetId: string): Promise<BusinessConfig> {
-  const { settings, services, staff } = SHEET_TABS;
+  const { settings, services, staff, closures } = SHEET_TABS;
+  const optional = [staff, closures];
   let rows: string[][][];
   try {
-    rows = await batchGet(sheetId, [settings, services, staff]);
+    rows = await batchGet(sheetId, [settings, services, ...optional]);
   } catch (err) {
-    // แท็บ staff ไม่บังคับ แต่ถ้าขอแท็บที่ไม่มี Sheets API ตอบ 400 ทั้งคำขอ จึงลองใหม่โดยไม่ขอ staff
+    // แท็บ staff/closures ไม่บังคับ แต่ถ้าขอแท็บที่ไม่มี Sheets API ตอบ 400 ทั้งคำขอ
+    // จึงดูว่ามีแท็บไหนอยู่จริงแล้วขอใหม่เฉพาะแท็บนั้น
     // (400 จากสาเหตุอื่น เช่น ไฟล์เป็น .xlsx จะล้มซ้ำในรอบที่สองและถูก throw ตามปกติ)
     if (httpStatus(err) !== 400) throw err;
-    rows = await batchGet(sheetId, [settings, services]);
+    const titles = await sheetTitles(sheetId).catch(() => new Set<string>());
+    const present = optional.filter((t) => titles.has(t));
+    const got = await batchGet(sheetId, [settings, services, ...present]);
+    rows = [got[0], got[1], ...optional.map((t) => (present.includes(t) ? got[2 + present.indexOf(t)] : []))];
   }
-  const [settingsRows = [], serviceRows = [], staffRows = []] = rows;
-  return parseSheetConfig(settingsRows, serviceRows, staffRows);
+  const [settingsRows = [], serviceRows = [], staffRows = [], closureRows = []] = rows;
+  return parseSheetConfig(settingsRows, serviceRows, staffRows, closureRows);
 }
 
 export async function getConfig(): Promise<BusinessConfig> {

@@ -12,7 +12,8 @@ npx eve link --non-interactive --project clinic-appointment
 # ใส่ secret ทีละตัว (ระบบจะถามค่า ไม่ต้องพิมพ์ค่าในคำสั่ง)
 npx vercel env add LINE_CHANNEL_SECRET production
 npx vercel env add LINE_CHANNEL_ACCESS_TOKEN production
-npx vercel env add GOOGLE_SERVICE_ACCOUNT_KEY production
+npx vercel env add GOOGLE_CLIENT_EMAIL production
+npx vercel env add GOOGLE_PRIVATE_KEY production
 npx vercel env add GOOGLE_CALENDAR_ID production
 npx vercel env add AI_PROVIDER production        # anthropic | openai | gateway
 npx vercel env add AI_API_KEY production

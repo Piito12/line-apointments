@@ -1,7 +1,7 @@
 // เชื่อม Google Calendar ด้วย Service Account (ดู google.ts)
 //
 // env ที่ต้องมีใน .env.local:
-//   GOOGLE_SERVICE_ACCOUNT_KEY  JSON ทั้งก้อนของ service account key (บรรทัดเดียว)
+//   GOOGLE_CLIENT_EMAIL + GOOGLE_PRIVATE_KEY (หรือ GOOGLE_SERVICE_ACCOUNT_KEY แบบเดิม) ดู ./google.ts
 //   GOOGLE_CALENDAR_ID          calendar ของร้าน ที่ share ให้ service account ด้วยสิทธิ์ "Make changes to events"
 //                                 - ร้านไม่แยกผู้ให้บริการ (ไม่มีแท็บ staff): รับจองและเช็คเวลาว่างจาก calendar นี้
 //                                 - ร้านแยกผู้ให้บริการ: เป็น calendar รวม เก็บสำเนาการจองให้เจ้าของดูภาพรวม

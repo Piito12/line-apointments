@@ -9,7 +9,9 @@
 |---|---|---|
 | `LINE_CHANNEL_SECRET` | ✅ | ตรวจลายเซ็น webhook ของ LINE |
 | `LINE_CHANNEL_ACCESS_TOKEN` | ✅ | ส่งข้อความตอบกลับลูกค้า |
-| `GOOGLE_SERVICE_ACCOUNT_KEY` | แนะนำ | JSON key ของ service account เป็นบรรทัดเดียว ใช้อ่านและจองคิวใน Google Calendar |
+| `GOOGLE_CLIENT_EMAIL` | แนะนำ | ค่า `client_email` ในไฟล์ JSON key ของ service account ใช้คู่กับ `GOOGLE_PRIVATE_KEY` เพื่ออ่านและจองคิวใน Google Calendar และอ่าน Sheet |
+| `GOOGLE_PRIVATE_KEY` | แนะนำ | ค่า `private_key` ในไฟล์ JSON key เดียวกัน ตั้งแต่ `-----BEGIN PRIVATE KEY-----` จนจบ |
+| `GOOGLE_SERVICE_ACCOUNT_KEY` | ไม่บังคับ | แบบเดิม: JSON key ทั้งก้อนในบรรทัดเดียว ใช้แทน 2 ค่าข้างบนได้ |
 | `GOOGLE_CALENDAR_ID` | แนะนำ | calendar ที่ใช้เก็บนัด ถ้า[แยกหมอ/พนักงาน](google-sheet.th.md#แยกหมอพนักงาน-แท็บ-staff) จะเป็น calendar รวมที่เก็บสำเนาทุกนัดให้เจ้าของดู (ไม่ใส่ก็ได้) |
 | `CONFIG_SHEET_ID` | ไม่บังคับ | Google Sheet ที่เก็บข้อมูลร้าน (ดู [ตั้งค่าข้อมูลร้าน](google-sheet.th.md)) ถ้าไม่ใส่ใช้ข้อมูลคลินิกสมมติ |
 | `AI_PROVIDER` | ✅ ตอน deploy | เจ้า AI ที่ใช้: `anthropic` · `openai` · `gateway` (ปุ่ม Deploy ใส่ `anthropic` ไว้ให้ แก้ได้) |
@@ -37,7 +39,7 @@ LINE_CHANNEL_ACCESS_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 > ⚠️ **ต้องมีทั้งสองค่าเสมอ** แม้จะทดสอบแค่ใน terminal โดยไม่ใช้ LINE เพราะ `agent/channels/line.ts` สร้าง LINE adapter ตอนโหลด ถ้าไม่มีค่า dev server จะเปิดไม่ขึ้น (eve compile channel แบบ static จึงปิด channel ตามเงื่อนไขไม่ได้)
 
-ค่า `GOOGLE_SERVICE_ACCOUNT_KEY` และ `GOOGLE_CALENDAR_ID` ดูวิธีหาได้ที่หัวข้อ [ตั้งค่า Google Calendar](google-calendar.th.md)
+ค่า `GOOGLE_CLIENT_EMAIL` `GOOGLE_PRIVATE_KEY` และ `GOOGLE_CALENDAR_ID` ดูวิธีหาได้ที่หัวข้อ [ตั้งค่า Google Calendar](google-calendar.th.md)
 
 ### การเลือกโมเดล
 

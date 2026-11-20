@@ -26,12 +26,15 @@ The agent uses one Google Calendar as the shop's booking schedule. The `get_avai
 ### 4. Add the values to the env
 
 ```bash
-GOOGLE_SERVICE_ACCOUNT_KEY={"type":"service_account","client_email":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...","...":"..."}
+GOOGLE_CLIENT_EMAIL=clinic-agent@<project>.iam.gserviceaccount.com
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----\n"
 GOOGLE_CALENDAR_ID=xxxxxxxx@group.calendar.google.com
 ```
 
-- `GOOGLE_SERVICE_ACCOUNT_KEY` = the whole JSON file **on one line**. Convert it with `jq -c . key.json` (keep the `\n` in `private_key` as is).
-- Locally, put them in `.env.local` and restart `npm run dev`. On Vercel, paste the JSON straight into the env value, then Redeploy.
+- Copy the 2 values from the JSON file: `client_email` → `GOOGLE_CLIENT_EMAIL`, `private_key` → `GOOGLE_PRIVATE_KEY`. Print them with `jq -r .client_email key.json` and `jq .private_key key.json`.
+- `GOOGLE_PRIVATE_KEY` must be the **whole** value, from `-----BEGIN PRIVATE KEY-----` to `-----END PRIVATE KEY-----\n`. In `.env.local` keep the `\n` and wrap it in double quotes. On Vercel you can paste it with `\n` or with real line breaks.
+- The older single variable still works: `GOOGLE_SERVICE_ACCOUNT_KEY` = the whole JSON on one line (`jq -c . key.json`). If both forms are set, the 2 variables win.
+- Locally, put them in `.env.local` and restart `npm run dev`. On Vercel, add each value in Environment Variables, then Redeploy.
 
 ### 5. Test
 
@@ -49,8 +52,9 @@ Ask the agent "is there a botox slot tomorrow?" You should get a card of free ti
 
 | Symptom | Likely cause |
 |---|---|
-| Agent says it cannot check the schedule yet | `GOOGLE_SERVICE_ACCOUNT_KEY` / `GOOGLE_CALENDAR_ID` not set, or not restarted |
-| Error `ไม่ใช่ JSON ที่ถูกต้อง` (not valid JSON) | The key was pasted incompletely or has a line break inside the JSON (it must be one line) |
+| Agent says it cannot check the schedule yet | `GOOGLE_CLIENT_EMAIL` / `GOOGLE_PRIVATE_KEY` / `GOOGLE_CALENDAR_ID` not set, or not restarted |
+| Error `GOOGLE_PRIVATE_KEY ต้องเป็นค่า private_key ทั้งหมด…` (must be the whole private_key) | Only part of the key was pasted. Copy the whole `private_key` value including the BEGIN/END lines |
+| Error `ไม่ใช่ JSON ที่ถูกต้อง` (not valid JSON, older `GOOGLE_SERVICE_ACCOUNT_KEY` only) | The key was pasted incompletely or has a line break inside the JSON (it must be one line) |
 | Error 404 Not Found | Wrong Calendar ID, or the calendar is not shared with `client_email` |
 | Error 403 | Shared as view-only (needs **Make changes to events**), or the Calendar API is not enabled |
 | Free times do not match what you see | An event not marked Free is blocking, or you are looking at a different calendar from the configured ID |

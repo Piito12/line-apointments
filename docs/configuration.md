@@ -8,7 +8,9 @@ Every value is a secret. **Never commit them.** For local runs, put them in `.en
 |---|---|---|
 | `LINE_CHANNEL_SECRET` | ✅ | Verifying LINE webhook signatures |
 | `LINE_CHANNEL_ACCESS_TOKEN` | ✅ | Sending replies to customers |
-| `GOOGLE_SERVICE_ACCOUNT_KEY` | Recommended | The service account's JSON key on one line, used to read and book Google Calendar slots |
+| `GOOGLE_CLIENT_EMAIL` | Recommended | `client_email` from the service account's JSON key. Used with `GOOGLE_PRIVATE_KEY` to read and book Google Calendar slots and read the Sheet |
+| `GOOGLE_PRIVATE_KEY` | Recommended | `private_key` from the same JSON key, from `-----BEGIN PRIVATE KEY-----` to the end |
+| `GOOGLE_SERVICE_ACCOUNT_KEY` | Optional | Older form: the whole JSON key on one line, instead of the 2 values above |
 | `GOOGLE_CALENDAR_ID` | Recommended | The calendar that holds bookings. If you [split doctors/staff](google-sheet.md#doctors-and-staff-staff-tab), it becomes a combined calendar holding a copy of every booking for the owner (optional) |
 | `CONFIG_SHEET_ID` | Optional | The Google Sheet with the shop data (see [Shop data](google-sheet.md)). Without it, the made-up clinic is used |
 | `AI_PROVIDER` | ✅ when deploying | The AI provider: `anthropic` · `openai` · `gateway` (the Deploy button pre-fills `anthropic`; you can change it) |
@@ -36,7 +38,7 @@ LINE_CHANNEL_ACCESS_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 > ⚠️ **Both values are always required**, even when you only test in the terminal without LINE. `agent/channels/line.ts` creates the LINE adapter when it loads, so without them the dev server will not start (eve compiles channels statically, so a channel cannot be turned off conditionally).
 
-For `GOOGLE_SERVICE_ACCOUNT_KEY` and `GOOGLE_CALENDAR_ID`, see [Google Calendar setup](google-calendar.md).
+For `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY` and `GOOGLE_CALENDAR_ID`, see [Google Calendar setup](google-calendar.md).
 
 ### Model selection
 

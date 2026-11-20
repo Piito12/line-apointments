@@ -27,12 +27,15 @@ agent ใช้ Google Calendar 1 ปฏิทินเป็นตาราง�
 ### 4. ใส่ค่าใน env
 
 ```bash
-GOOGLE_SERVICE_ACCOUNT_KEY={"type":"service_account","client_email":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...","...":"..."}
+GOOGLE_CLIENT_EMAIL=clinic-agent@<project>.iam.gserviceaccount.com
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----\n"
 GOOGLE_CALENDAR_ID=xxxxxxxx@group.calendar.google.com
 ```
 
-- `GOOGLE_SERVICE_ACCOUNT_KEY` = เนื้อหาไฟล์ JSON **ทั้งก้อนในบรรทัดเดียว** แปลงได้ด้วย `jq -c . key.json` (คง `\n` ใน `private_key` ไว้ตามเดิม)
-- local ใส่ใน `.env.local` แล้ว restart `npm run dev` ส่วนบน Vercel วาง JSON ลงช่องค่าของ env ได้ตรงๆ แล้ว Redeploy
+- คัดลอก 2 ค่าจากไฟล์ JSON: `client_email` → `GOOGLE_CLIENT_EMAIL` และ `private_key` → `GOOGLE_PRIVATE_KEY` ดูค่าได้ด้วย `jq -r .client_email key.json` และ `jq .private_key key.json`
+- `GOOGLE_PRIVATE_KEY` ต้องเป็นค่า**ทั้งหมด** ตั้งแต่ `-----BEGIN PRIVATE KEY-----` จนถึง `-----END PRIVATE KEY-----\n` ใน `.env.local` ให้คง `\n` ไว้และครอบด้วยเครื่องหมายคำพูด ส่วนบน Vercel วางแบบมี `\n` หรือขึ้นบรรทัดจริงก็ได้
+- แบบเดิมยังใช้ได้: `GOOGLE_SERVICE_ACCOUNT_KEY` = JSON ทั้งก้อนในบรรทัดเดียว (`jq -c . key.json`) ถ้าตั้งทั้งสองแบบ ระบบใช้แบบแยก 2 ตัวแปร
+- local ใส่ใน `.env.local` แล้ว restart `npm run dev` ส่วนบน Vercel เพิ่มทีละค่าใน Environment Variables แล้ว Redeploy
 
 ### 5. ทดสอบ
 
@@ -50,8 +53,9 @@ GOOGLE_CALENDAR_ID=xxxxxxxx@group.calendar.google.com
 
 | อาการ | สาเหตุที่เป็นไปได้ |
 |---|---|
-| agent ตอบว่ายังตรวจสอบตารางไม่ได้ | ยังไม่ได้ใส่ `GOOGLE_SERVICE_ACCOUNT_KEY` / `GOOGLE_CALENDAR_ID` หรือยังไม่ได้ restart |
-| error `ไม่ใช่ JSON ที่ถูกต้อง` | วาง key ไม่ครบ หรือขึ้นบรรทัดใหม่กลาง JSON (ต้องเป็นบรรทัดเดียว) |
+| agent ตอบว่ายังตรวจสอบตารางไม่ได้ | ยังไม่ได้ใส่ `GOOGLE_CLIENT_EMAIL` / `GOOGLE_PRIVATE_KEY` / `GOOGLE_CALENDAR_ID` หรือยังไม่ได้ restart |
+| error `GOOGLE_PRIVATE_KEY ต้องเป็นค่า private_key ทั้งหมด…` | วาง key ไม่ครบ ให้คัดลอกค่า `private_key` ทั้งหมดรวมบรรทัด BEGIN/END |
+| error `ไม่ใช่ JSON ที่ถูกต้อง` (เฉพาะ `GOOGLE_SERVICE_ACCOUNT_KEY` แบบเดิม) | วาง key ไม่ครบ หรือขึ้นบรรทัดใหม่กลาง JSON (ต้องเป็นบรรทัดเดียว) |
 | error 404 Not Found | Calendar ID ผิด หรือยังไม่ได้แชร์ปฏิทินให้ `client_email` |
 | error 403 | แชร์ด้วยสิทธิ์แค่ดู ต้องเป็น **Make changes to events** หรือยังไม่ได้ Enable Calendar API |
 | เวลาว่างไม่ตรงกับที่เห็น | มี event ที่ไม่ได้ตั้งเป็น Free บล็อกอยู่ หรือดูคนละปฏิทินกับที่ตั้ง ID ไว้ |

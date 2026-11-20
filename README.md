@@ -8,7 +8,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-7-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![LINE](https://img.shields.io/badge/LINE-Messaging%20API-06c755?logo=line&logoColor=white)](https://developers.line.biz/en/docs/messaging-api/)
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmintelligence-dev%2Feve-appointment-agent&project-name=clinic-appointment&repository-name=clinic-appointment&env=LINE_CHANNEL_SECRET,LINE_CHANNEL_ACCESS_TOKEN,GOOGLE_SERVICE_ACCOUNT_KEY,GOOGLE_CALENDAR_ID,AI_PROVIDER,AI_API_KEY&envDefaults=%7B%22AI_PROVIDER%22%3A%22anthropic%22%7D&envDescription=LINE%20Messaging%20API%20credentials%2C%20Google%20Calendar%20service%20account%2C%20and%20an%20AI%20key.%20AI_PROVIDER%20is%20anthropic%2C%20openai%20or%20gateway.&envLink=https%3A%2F%2Fgithub.com%2Fmintelligence-dev%2Feve-appointment-agent%2Fblob%2Fmain%2Fdocs%2Fconfiguration.md)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmintelligence-dev%2Feve-appointment-agent&project-name=clinic-appointment&repository-name=clinic-appointment&env=LINE_CHANNEL_SECRET,LINE_CHANNEL_ACCESS_TOKEN,GOOGLE_CLIENT_EMAIL,GOOGLE_PRIVATE_KEY,GOOGLE_CALENDAR_ID,AI_PROVIDER,AI_API_KEY&envDefaults=%7B%22AI_PROVIDER%22%3A%22anthropic%22%7D&envDescription=LINE%20Messaging%20API%20credentials%2C%20Google%20Calendar%20service%20account%2C%20and%20an%20AI%20key.%20AI_PROVIDER%20is%20anthropic%2C%20openai%20or%20gateway.&envLink=https%3A%2F%2Fgithub.com%2Fmintelligence-dev%2Feve-appointment-agent%2Fblob%2Fmain%2Fdocs%2Fconfiguration.md)
 
 > **เป็น PoC ใช้ข้อมูลสมมติเท่านั้น ห้ามใส่ข้อมูลลูกค้าจริง** เพราะข้อความวิ่งผ่าน provider ของโมเดล (PDPA)  
 > **This is a PoC. Use made-up data only, never real customer data:** messages pass through the model provider (PDPA).
@@ -58,7 +58,7 @@ npm run dev                      # dev server ที่ http://127.0.0.1:2000
 
 - **ครั้งแรกที่ไม่มี key ของโมเดล:** พิมพ์ `/login` ใน TUI → เลือก **ChatGPT Subscription** → login ในเบราว์เซอร์ แล้วคุยกับ agent ใน terminal ได้เลย eve reload เองเมื่อแก้ไฟล์ใน `agent/`
 - **คุยผ่าน LINE:** เปิดท่อด้วย `cloudflared tunnel --url http://localhost:2000` แล้วตั้ง Webhook URL เป็น `<URL>/eve/v1/line` ดู[ตั้งค่า LINE](docs/line.th.md)
-- **จองลงปฏิทินจริง:** ใส่ `GOOGLE_SERVICE_ACCOUNT_KEY` และ `GOOGLE_CALENDAR_ID` ดู[ตั้งค่า Google Calendar](docs/google-calendar.th.md) ถ้าไม่ใส่ agent ยังรันได้แต่จะบอกลูกค้าว่ายังตรวจสอบตารางไม่ได้
+- **จองลงปฏิทินจริง:** ใส่ `GOOGLE_CLIENT_EMAIL` `GOOGLE_PRIVATE_KEY` และ `GOOGLE_CALENDAR_ID` ดู[ตั้งค่า Google Calendar](docs/google-calendar.th.md) ถ้าไม่ใส่ agent ยังรันได้แต่จะบอกลูกค้าว่ายังตรวจสอบตารางไม่ได้
 - **ข้อมูลร้านของคุณเอง:** ใส่ `CONFIG_SHEET_ID` ดู[ตั้งค่าข้อมูลร้าน](docs/google-sheet.th.md) ถ้าไม่ใส่จะใช้ "คลินิกทำหน้า" (คลินิกสมมติ)
 
 ### Environment variables
@@ -66,7 +66,7 @@ npm run dev                      # dev server ที่ http://127.0.0.1:2000
 | ตัวแปร | จำเป็น | ใช้ทำอะไร |
 |---|---|---|
 | `LINE_CHANNEL_SECRET` · `LINE_CHANNEL_ACCESS_TOKEN` | ✅ | ตรวจลายเซ็น webhook และส่งข้อความตอบกลับ |
-| `GOOGLE_SERVICE_ACCOUNT_KEY` · `GOOGLE_CALENDAR_ID` | แนะนำ | อ่านเวลาว่างและจองคิว |
+| `GOOGLE_CLIENT_EMAIL` · `GOOGLE_PRIVATE_KEY` · `GOOGLE_CALENDAR_ID` | แนะนำ | อ่านเวลาว่างและจองคิว |
 | `CONFIG_SHEET_ID` | ไม่บังคับ | Google Sheet ข้อมูลร้าน |
 | `AI_PROVIDER` · `AI_API_KEY` | ✅ ตอน deploy | `anthropic` · `openai` · `gateway` กับ key ของเจ้านั้น (`gateway` ใช้ได้หลายเจ้าด้วย key เดียว) |
 | `AI_MODEL` | ไม่บังคับ | เปลี่ยนรุ่นโมเดล เช่น `claude-haiku-5.5` หรือ `anthropic/claude-sonnet-5` (gateway) |
@@ -137,7 +137,7 @@ npm run dev                      # dev server at http://127.0.0.1:2000
 
 - **First run without a model key:** type `/login` in the TUI → choose **ChatGPT Subscription** → log in in the browser, then chat with the agent in the terminal. eve reloads when files in `agent/` change.
 - **Chat through LINE:** open a tunnel with `cloudflared tunnel --url http://localhost:2000` and set the Webhook URL to `<URL>/eve/v1/line`. See [LINE setup](docs/line.md).
-- **Book into a real calendar:** set `GOOGLE_SERVICE_ACCOUNT_KEY` and `GOOGLE_CALENDAR_ID`. See [Google Calendar setup](docs/google-calendar.md). Without them the agent still runs but tells customers it cannot check the schedule yet.
+- **Book into a real calendar:** set `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY` and `GOOGLE_CALENDAR_ID`. See [Google Calendar setup](docs/google-calendar.md). Without them the agent still runs but tells customers it cannot check the schedule yet.
 - **Your own shop data:** set `CONFIG_SHEET_ID`. See [Shop data](docs/google-sheet.md). Without it the agent uses a made-up clinic, "คลินิกทำหน้า".
 
 ### Environment variables
@@ -145,7 +145,7 @@ npm run dev                      # dev server at http://127.0.0.1:2000
 | Variable | Required | For |
 |---|---|---|
 | `LINE_CHANNEL_SECRET` · `LINE_CHANNEL_ACCESS_TOKEN` | ✅ | Verifying webhook signatures and sending replies |
-| `GOOGLE_SERVICE_ACCOUNT_KEY` · `GOOGLE_CALENDAR_ID` | Recommended | Reading free slots and booking |
+| `GOOGLE_CLIENT_EMAIL` · `GOOGLE_PRIVATE_KEY` · `GOOGLE_CALENDAR_ID` | Recommended | Reading free slots and booking |
 | `CONFIG_SHEET_ID` | Optional | The shop-data Google Sheet |
 | `AI_PROVIDER` · `AI_API_KEY` | ✅ when deploying | `anthropic` · `openai` · `gateway` and that provider's key (`gateway` reaches many providers with one key) |
 | `AI_MODEL` | Optional | Changes the model, e.g. `claude-haiku-5.5` or `anthropic/claude-sonnet-5` (gateway) |

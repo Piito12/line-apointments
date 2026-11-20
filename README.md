@@ -8,7 +8,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-7-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![LINE](https://img.shields.io/badge/LINE-Messaging%20API-06c755?logo=line&logoColor=white)](https://developers.line.biz/en/docs/messaging-api/)
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmintelligence-dev%2Feve-appointment-agent&project-name=clinic-appointment&repository-name=clinic-appointment&env=LINE_CHANNEL_SECRET,LINE_CHANNEL_ACCESS_TOKEN,GOOGLE_SERVICE_ACCOUNT_KEY,GOOGLE_CALENDAR_ID&envDescription=LINE%20Messaging%20API%20credentials%20and%20Google%20Calendar%20service%20account&envLink=https%3A%2F%2Fgithub.com%2Fmintelligence-dev%2Feve-appointment-agent%2Fblob%2Fmain%2Fdocs%2Fconfiguration.md)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmintelligence-dev%2Feve-appointment-agent&project-name=clinic-appointment&repository-name=clinic-appointment&env=LINE_CHANNEL_SECRET,LINE_CHANNEL_ACCESS_TOKEN,GOOGLE_SERVICE_ACCOUNT_KEY,GOOGLE_CALENDAR_ID,AI_PROVIDER,AI_API_KEY&envDefaults=%7B%22AI_PROVIDER%22%3A%22anthropic%22%7D&envDescription=LINE%20Messaging%20API%20credentials%2C%20Google%20Calendar%20service%20account%2C%20and%20an%20AI%20key.%20AI_PROVIDER%20is%20anthropic%2C%20openai%20or%20gateway.&envLink=https%3A%2F%2Fgithub.com%2Fmintelligence-dev%2Feve-appointment-agent%2Fblob%2Fmain%2Fdocs%2Fconfiguration.md)
 
 > **เป็น PoC ใช้ข้อมูลสมมติเท่านั้น ห้ามใส่ข้อมูลลูกค้าจริง** เพราะข้อความวิ่งผ่าน provider ของโมเดล (PDPA)  
 > **This is a PoC. Use made-up data only, never real customer data:** messages pass through the model provider (PDPA).
@@ -23,7 +23,7 @@
 2. **จองลง Google Calendar** อ่านเวลาว่างจาก event จริง กันจองซ้ำ และแยก calendar ต่อหมอ/พนักงานได้
 3. **ตั้งค่าร้านจาก Google Sheet** ชื่อร้าน บริการ เวลาทำการ วันปิด และกฎเฉพาะร้าน แก้แล้วมีผลภายใน 1 นาที ไม่ต้อง deploy ใหม่
 4. **ปิดตามวันหยุดนักขัตฤกษ์ไทยอัตโนมัติ** และตั้งวันปิด/เปิดพิเศษรายวันได้ในแท็บ `closures`
-5. **เลือกโมเดลจาก key ที่มี** Anthropic · OpenAI · Vercel AI Gateway หรือ ChatGPT subscription สำหรับเทสในเครื่อง
+5. **เลือก AI ได้หลายเจ้า** ตั้ง `AI_PROVIDER` เป็น Anthropic · OpenAI · Vercel AI Gateway แล้วใส่ `AI_API_KEY` หรือใช้ ChatGPT subscription สำหรับเทสในเครื่อง
 
 ### เอกสาร
 
@@ -52,7 +52,7 @@ README นี้สรุปไว้สั้นๆ รายละเอีย
 
 ```bash
 npm install
-touch .env.local                 # ใส่ LINE_CHANNEL_SECRET และ LINE_CHANNEL_ACCESS_TOKEN
+cp .env.example .env.local       # ใส่ LINE_CHANNEL_SECRET และ LINE_CHANNEL_ACCESS_TOKEN
 npm run dev                      # dev server ที่ http://127.0.0.1:2000
 ```
 
@@ -68,7 +68,8 @@ npm run dev                      # dev server ที่ http://127.0.0.1:2000
 | `LINE_CHANNEL_SECRET` · `LINE_CHANNEL_ACCESS_TOKEN` | ✅ | ตรวจลายเซ็น webhook และส่งข้อความตอบกลับ |
 | `GOOGLE_SERVICE_ACCOUNT_KEY` · `GOOGLE_CALENDAR_ID` | แนะนำ | อ่านเวลาว่างและจองคิว |
 | `CONFIG_SHEET_ID` | ไม่บังคับ | Google Sheet ข้อมูลร้าน |
-| `ANTHROPIC_API_KEY` · `OPENAI_API_KEY` · `AI_GATEWAY_API_KEY` · `AI_MODEL` | ไม่บังคับ | เลือก provider และรุ่นโมเดล |
+| `AI_PROVIDER` · `AI_API_KEY` | ✅ ตอน deploy | `anthropic` · `openai` · `gateway` กับ key ของเจ้านั้น (`gateway` ใช้ได้หลายเจ้าด้วย key เดียว) |
+| `AI_MODEL` | ไม่บังคับ | เปลี่ยนรุ่นโมเดล เช่น `claude-haiku-5.5` หรือ `anthropic/claude-sonnet-5` (gateway) |
 
 ทุกค่าเป็น secret **ห้าม commit** วิธีหาค่าและลำดับการเลือกโมเดลอยู่ใน [docs/configuration.th.md](docs/configuration.th.md)
 
@@ -101,7 +102,7 @@ npm run dev                      # dev server ที่ http://127.0.0.1:2000
 2. **Books into Google Calendar.** Free slots come from real events, double bookings are prevented, and each doctor/staff member can have their own calendar.
 3. **Configures the shop from a Google Sheet:** name, services, opening hours, closed days and shop-specific rules. Edits apply within 1 minute, with no redeploy.
 4. **Closes on Thai public holidays automatically**, with per-day closed/open overrides in the `closures` tab.
-5. **Picks the model from the keys you have:** Anthropic · OpenAI · Vercel AI Gateway, or a ChatGPT subscription for local testing.
+5. **Works with several AI providers:** set `AI_PROVIDER` to Anthropic · OpenAI · Vercel AI Gateway and add `AI_API_KEY`, or use a ChatGPT subscription for local testing.
 
 ### Docs
 
@@ -130,7 +131,7 @@ Each guide has an English page and a Thai page (`*.th.md`). This file is a summa
 
 ```bash
 npm install
-touch .env.local                 # add LINE_CHANNEL_SECRET and LINE_CHANNEL_ACCESS_TOKEN
+cp .env.example .env.local       # add LINE_CHANNEL_SECRET and LINE_CHANNEL_ACCESS_TOKEN
 npm run dev                      # dev server at http://127.0.0.1:2000
 ```
 
@@ -146,7 +147,8 @@ npm run dev                      # dev server at http://127.0.0.1:2000
 | `LINE_CHANNEL_SECRET` · `LINE_CHANNEL_ACCESS_TOKEN` | ✅ | Verifying webhook signatures and sending replies |
 | `GOOGLE_SERVICE_ACCOUNT_KEY` · `GOOGLE_CALENDAR_ID` | Recommended | Reading free slots and booking |
 | `CONFIG_SHEET_ID` | Optional | The shop-data Google Sheet |
-| `ANTHROPIC_API_KEY` · `OPENAI_API_KEY` · `AI_GATEWAY_API_KEY` · `AI_MODEL` | Optional | Choosing the provider and model |
+| `AI_PROVIDER` · `AI_API_KEY` | ✅ when deploying | `anthropic` · `openai` · `gateway` and that provider's key (`gateway` reaches many providers with one key) |
+| `AI_MODEL` | Optional | Changes the model, e.g. `claude-haiku-5.5` or `anthropic/claude-sonnet-5` (gateway) |
 
 Every value is a secret. **Never commit them.** Where to find each value and how the model is chosen: [docs/configuration.md](docs/configuration.md).
 

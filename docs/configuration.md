@@ -2,7 +2,7 @@
 
 [← Back to README](../README.md#english) · [ภาษาไทย](configuration.th.md)
 
-Every value is a secret. **Never commit them.** For local runs, put them in `.env.local` (already ignored by git). For deployments, add them in Vercel → Project → **Settings → Environment Variables** (the Deploy button asks for LINE, Google, `AI_PROVIDER` and `AI_API_KEY` when it creates the project).
+Every value is a secret. **Never commit them.** For local runs, put them in `.env.local` (already ignored by git). For deployments, add them in Vercel → Project → **Settings → Environment Variables** (the Deploy button asks for LINE, Google, `CONFIG_SHEET_ID`, `AI_PROVIDER` and `AI_API_KEY` when it creates the project).
 
 | Variable | Required | For |
 |---|---|---|
@@ -12,7 +12,7 @@ Every value is a secret. **Never commit them.** For local runs, put them in `.en
 | `GOOGLE_PRIVATE_KEY` | Recommended | `private_key` from the same JSON key, from `-----BEGIN PRIVATE KEY-----` to the end |
 | `GOOGLE_SERVICE_ACCOUNT_KEY` | Optional | Older form: the whole JSON key on one line, instead of the 2 values above |
 | `GOOGLE_CALENDAR_ID` | Recommended | The calendar that holds bookings. If you [split doctors/staff](google-sheet.md#doctors-and-staff-staff-tab), it becomes a combined calendar holding a copy of every booking for the owner (optional) |
-| `CONFIG_SHEET_ID` | Optional | The Google Sheet with the shop data (see [Shop data](google-sheet.md)). Without it, the made-up clinic is used |
+| `CONFIG_SHEET_ID` | Optional | The Google Sheet with the shop data (see [Shop data](google-sheet.md)). Empty or `demo` = the made-up clinic. The Deploy button pre-fills `demo`; replace it with your Sheet ID to use your own data |
 | `AI_PROVIDER` | ✅ when deploying | The AI provider: `anthropic` · `openai` · `gateway` (the Deploy button pre-fills `anthropic`; you can change it) |
 | `AI_API_KEY` | ✅ when deploying | The key for the provider in `AI_PROVIDER` |
 | `ANTHROPIC_API_KEY` | Optional | Older name, used when `AI_PROVIDER` is not set: calls Claude directly |

@@ -3,7 +3,7 @@
 [← กลับ README](../README.md#ภาษาไทย) · [English](deploy.md)
 
 
-**วิธีที่ 1: ปุ่ม Deploy** กดปุ่ม Deploy with Vercel ใน [README](../README.md) → เลือก scope → กรอก secret (LINE, Google, `AI_PROVIDER` และ `AI_API_KEY`) → Deploy (Vercel จะ clone repo ไปเป็น repo ใหม่ในบัญชีของคุณ และ deploy ใหม่ทุกครั้งที่ push)
+**วิธีที่ 1: ปุ่ม Deploy** กดปุ่ม Deploy with Vercel ใน [README](../README.md) → เลือก scope → กรอก secret (LINE, Google, `CONFIG_SHEET_ID`, `AI_PROVIDER` และ `AI_API_KEY`) ช่อง `CONFIG_SHEET_ID` กรอก `demo` ไว้ให้ (ใช้คลินิกสมมติ) ถ้าจะใช้ข้อมูลร้านเอง ให้สร้าง Sheet จาก template ก่อนแล้วใส่ ID แทน ดู[ตั้งค่าข้อมูลร้าน](google-sheet.th.md) → Deploy (Vercel จะ clone repo ไปเป็น repo ใหม่ในบัญชีของคุณ และ deploy ใหม่ทุกครั้งที่ push)
 
 **วิธีที่ 2: CLI จากเครื่องนี้**
 
@@ -17,7 +17,7 @@ npx vercel env add GOOGLE_PRIVATE_KEY production
 npx vercel env add GOOGLE_CALENDAR_ID production
 npx vercel env add AI_PROVIDER production        # anthropic | openai | gateway
 npx vercel env add AI_API_KEY production
-npx vercel env add CONFIG_SHEET_ID production   # ไม่บังคับ ถ้าใช้ข้อมูลร้านจาก Google Sheet
+npx vercel env add CONFIG_SHEET_ID production   # ไม่บังคับ: Sheet ID หรือข้ามไปเพื่อใช้คลินิกสมมติ
 npx eve deploy --non-interactive --yes
 ```
 

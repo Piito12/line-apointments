@@ -1,6 +1,7 @@
 // โหลดข้อมูลร้าน (business config)
 //
-//   - ไม่ได้ตั้ง CONFIG_SHEET_ID  → ใช้ DEFAULT_CONFIG (คลินิกสมมติของ PoC)
+//   - ไม่ได้ตั้ง CONFIG_SHEET_ID หรือตั้งเป็น "demo" → ใช้ DEFAULT_CONFIG (คลินิกสมมติของ PoC)
+//     ("demo" คือค่าเริ่มต้นในฟอร์มปุ่ม Deploy ของ Vercel ซึ่งทำช่องแบบไม่บังคับกรอกไม่ได้)
 //   - ตั้ง CONFIG_SHEET_ID        → อ่านจาก Google Sheet ผ่าน service account ตัวเดียวกับ Calendar
 //                                   (ต้องแชร์ Sheet ให้ client_email ของ service account อย่างน้อยสิทธิ์ Viewer
 //                                    และเปิด Google Sheets API ใน Google Cloud project)
@@ -16,6 +17,8 @@ import { getServiceAccount } from "./google";
 export * from "./config-schema";
 
 const CACHE_TTL_MS = 60_000;
+/** ค่าของ CONFIG_SHEET_ID ที่แปลว่ายังไม่ใช้ Sheet (ค่าเริ่มต้นในปุ่ม Deploy) */
+const DEMO_SHEET_ID = "demo";
 
 export class ConfigUnavailableError extends Error {
   constructor(cause: unknown) {
@@ -74,7 +77,7 @@ async function fetchSheetConfig(sheetId: string): Promise<BusinessConfig> {
 
 export async function getConfig(): Promise<BusinessConfig> {
   const sheetId = process.env.CONFIG_SHEET_ID?.trim();
-  if (!sheetId) return DEFAULT_CONFIG;
+  if (!sheetId || sheetId.toLowerCase() === DEMO_SHEET_ID) return DEFAULT_CONFIG;
 
   if (lastGood && Date.now() - lastGood.loadedAt < CACHE_TTL_MS) return lastGood.config;
 

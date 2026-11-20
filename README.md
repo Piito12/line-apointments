@@ -8,7 +8,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-7-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![LINE](https://img.shields.io/badge/LINE-Messaging%20API-06c755?logo=line&logoColor=white)](https://developers.line.biz/en/docs/messaging-api/)
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmintelligence-dev%2Feve-appointment-agent&project-name=clinic-appointment&repository-name=clinic-appointment&env=LINE_CHANNEL_SECRET,LINE_CHANNEL_ACCESS_TOKEN,GOOGLE_CLIENT_EMAIL,GOOGLE_PRIVATE_KEY,GOOGLE_CALENDAR_ID,AI_PROVIDER,AI_API_KEY&envDefaults=%7B%22AI_PROVIDER%22%3A%22anthropic%22%7D&envDescription=LINE%20Messaging%20API%20credentials%2C%20Google%20Calendar%20service%20account%2C%20and%20an%20AI%20key.%20AI_PROVIDER%20is%20anthropic%2C%20openai%20or%20gateway.&envLink=https%3A%2F%2Fgithub.com%2Fmintelligence-dev%2Feve-appointment-agent%2Fblob%2Fmain%2Fdocs%2Fconfiguration.md)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmintelligence-dev%2Feve-appointment-agent&project-name=clinic-appointment&repository-name=clinic-appointment&env=LINE_CHANNEL_SECRET,LINE_CHANNEL_ACCESS_TOKEN,GOOGLE_CLIENT_EMAIL,GOOGLE_PRIVATE_KEY,GOOGLE_CALENDAR_ID,CONFIG_SHEET_ID,AI_PROVIDER,AI_API_KEY&envDefaults=%7B%22CONFIG_SHEET_ID%22%3A%22demo%22%2C%22AI_PROVIDER%22%3A%22anthropic%22%7D&envDescription=LINE%20Messaging%20API%20credentials%2C%20Google%20service%20account%2C%20Google%20Calendar%20ID%2C%20shop-data%20Google%20Sheet%20ID%20%28or%20demo%29%2C%20and%20an%20AI%20key.%20AI_PROVIDER%20is%20anthropic%2C%20openai%20or%20gateway.&envLink=https%3A%2F%2Fgithub.com%2Fmintelligence-dev%2Feve-appointment-agent%2Fblob%2Fmain%2Fdocs%2Fconfiguration.md)
 
 > **เป็น PoC ใช้ข้อมูลสมมติเท่านั้น ห้ามใส่ข้อมูลลูกค้าจริง** เพราะข้อความวิ่งผ่าน provider ของโมเดล (PDPA)  
 > **This is a PoC. Use made-up data only, never real customer data:** messages pass through the model provider (PDPA).
@@ -67,7 +67,7 @@ npm run dev                      # dev server ที่ http://127.0.0.1:2000
 |---|---|---|
 | `LINE_CHANNEL_SECRET` · `LINE_CHANNEL_ACCESS_TOKEN` | ✅ | ตรวจลายเซ็น webhook และส่งข้อความตอบกลับ |
 | `GOOGLE_CLIENT_EMAIL` · `GOOGLE_PRIVATE_KEY` · `GOOGLE_CALENDAR_ID` | แนะนำ | อ่านเวลาว่างและจองคิว |
-| `CONFIG_SHEET_ID` | ไม่บังคับ | Google Sheet ข้อมูลร้าน |
+| `CONFIG_SHEET_ID` | ไม่บังคับ | Google Sheet ข้อมูลร้าน เว้นว่างหรือ `demo` = ใช้คลินิกสมมติ (ปุ่ม Deploy กรอก `demo` ไว้ให้) |
 | `AI_PROVIDER` · `AI_API_KEY` | ✅ ตอน deploy | `anthropic` · `openai` · `gateway` กับ key ของเจ้านั้น (`gateway` ใช้ได้หลายเจ้าด้วย key เดียว) |
 | `AI_MODEL` | ไม่บังคับ | เปลี่ยนรุ่นโมเดล เช่น `claude-haiku-5.5` หรือ `anthropic/claude-sonnet-5` (gateway) |
 
@@ -146,7 +146,7 @@ npm run dev                      # dev server at http://127.0.0.1:2000
 |---|---|---|
 | `LINE_CHANNEL_SECRET` · `LINE_CHANNEL_ACCESS_TOKEN` | ✅ | Verifying webhook signatures and sending replies |
 | `GOOGLE_CLIENT_EMAIL` · `GOOGLE_PRIVATE_KEY` · `GOOGLE_CALENDAR_ID` | Recommended | Reading free slots and booking |
-| `CONFIG_SHEET_ID` | Optional | The shop-data Google Sheet |
+| `CONFIG_SHEET_ID` | Optional | The shop-data Google Sheet. Empty or `demo` = the made-up clinic (the Deploy button pre-fills `demo`) |
 | `AI_PROVIDER` · `AI_API_KEY` | ✅ when deploying | `anthropic` · `openai` · `gateway` and that provider's key (`gateway` reaches many providers with one key) |
 | `AI_MODEL` | Optional | Changes the model, e.g. `claude-haiku-5.5` or `anthropic/claude-sonnet-5` (gateway) |
 

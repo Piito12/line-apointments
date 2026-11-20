@@ -2,7 +2,7 @@
 
 [← Back to README](../README.md#english) · [ภาษาไทย](deploy.th.md)
 
-**Option 1: Deploy button.** Click Deploy with Vercel in the [README](../README.md) → choose a scope → enter the secrets (LINE, Google, `AI_PROVIDER` and `AI_API_KEY`) → Deploy (Vercel clones the repo into a new repo in your account and redeploys on every push).
+**Option 1: Deploy button.** Click Deploy with Vercel in the [README](../README.md) → choose a scope → enter the secrets (LINE, Google, `CONFIG_SHEET_ID`, `AI_PROVIDER` and `AI_API_KEY`). `CONFIG_SHEET_ID` is pre-filled with `demo` (the made-up clinic); to use your own shop data, create the Sheet from the template first and enter its ID (see [Shop data](google-sheet.md)) → Deploy (Vercel clones the repo into a new repo in your account and redeploys on every push).
 
 **Option 2: CLI from this machine**
 
@@ -16,7 +16,7 @@ npx vercel env add GOOGLE_PRIVATE_KEY production
 npx vercel env add GOOGLE_CALENDAR_ID production
 npx vercel env add AI_PROVIDER production        # anthropic | openai | gateway
 npx vercel env add AI_API_KEY production
-npx vercel env add CONFIG_SHEET_ID production   # optional, if shop data comes from a Google Sheet
+npx vercel env add CONFIG_SHEET_ID production   # optional: Sheet ID, or skip to use the made-up clinic
 npx eve deploy --non-interactive --yes
 ```
 

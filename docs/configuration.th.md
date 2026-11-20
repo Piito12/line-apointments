@@ -3,7 +3,7 @@
 [← กลับ README](../README.md#ภาษาไทย) · [English](configuration.md)
 
 
-ทุกค่าเป็น secret **ห้าม commit** ตอนรัน local ให้ใส่ใน `.env.local` (ถูก ignore ใน git แล้ว) ตอน deploy ให้ใส่ใน Vercel → Project → **Settings → Environment Variables** (ปุ่ม Deploy จะขอ LINE, Google, `AI_PROVIDER` และ `AI_API_KEY` ให้กรอกตอนสร้าง project)
+ทุกค่าเป็น secret **ห้าม commit** ตอนรัน local ให้ใส่ใน `.env.local` (ถูก ignore ใน git แล้ว) ตอน deploy ให้ใส่ใน Vercel → Project → **Settings → Environment Variables** (ปุ่ม Deploy จะขอ LINE, Google, `CONFIG_SHEET_ID`, `AI_PROVIDER` และ `AI_API_KEY` ให้กรอกตอนสร้าง project)
 
 | ตัวแปร | จำเป็น | ใช้ทำอะไร |
 |---|---|---|
@@ -13,7 +13,7 @@
 | `GOOGLE_PRIVATE_KEY` | แนะนำ | ค่า `private_key` ในไฟล์ JSON key เดียวกัน ตั้งแต่ `-----BEGIN PRIVATE KEY-----` จนจบ |
 | `GOOGLE_SERVICE_ACCOUNT_KEY` | ไม่บังคับ | แบบเดิม: JSON key ทั้งก้อนในบรรทัดเดียว ใช้แทน 2 ค่าข้างบนได้ |
 | `GOOGLE_CALENDAR_ID` | แนะนำ | calendar ที่ใช้เก็บนัด ถ้า[แยกหมอ/พนักงาน](google-sheet.th.md#แยกหมอพนักงาน-แท็บ-staff) จะเป็น calendar รวมที่เก็บสำเนาทุกนัดให้เจ้าของดู (ไม่ใส่ก็ได้) |
-| `CONFIG_SHEET_ID` | ไม่บังคับ | Google Sheet ที่เก็บข้อมูลร้าน (ดู [ตั้งค่าข้อมูลร้าน](google-sheet.th.md)) ถ้าไม่ใส่ใช้ข้อมูลคลินิกสมมติ |
+| `CONFIG_SHEET_ID` | ไม่บังคับ | Google Sheet ที่เก็บข้อมูลร้าน (ดู [ตั้งค่าข้อมูลร้าน](google-sheet.th.md)) เว้นว่างหรือ `demo` = ใช้คลินิกสมมติ ปุ่ม Deploy กรอก `demo` ไว้ให้ ถ้าจะใช้ข้อมูลร้านเองให้เปลี่ยนเป็น Sheet ID |
 | `AI_PROVIDER` | ✅ ตอน deploy | เจ้า AI ที่ใช้: `anthropic` · `openai` · `gateway` (ปุ่ม Deploy ใส่ `anthropic` ไว้ให้ แก้ได้) |
 | `AI_API_KEY` | ✅ ตอน deploy | key ของเจ้าที่เลือกใน `AI_PROVIDER` |
 | `ANTHROPIC_API_KEY` | ไม่บังคับ | ชื่อแบบเดิม ใช้เมื่อไม่ได้ตั้ง `AI_PROVIDER` จะเรียก Claude โดยตรง |
